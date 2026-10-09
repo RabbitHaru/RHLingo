@@ -4,6 +4,7 @@ import gc
 import hashlib
 import html
 import json
+import math
 import os
 import queue
 import re
@@ -110,6 +111,73 @@ def _dir_size(path):
 
 _MODEL_LOCK = threading.Lock()
 _MODEL = {"key": None, "model": None, "device": None}
+
+
+# Whisper 는 입력을 항상 30초로 채워서 계산하므로 짧은 발화도 비용이 같습니다.
+# 발화 길이(+1초 여유)에 맞춰 입력 길이를 줄이면 3배 이상 빨라지고, 결과는 대체로 같거나 더 정확합니다.
+_CTX = threading.local()
+_pad_installed = False
+
+
+def _install_pad():
+    global _pad_installed
+    if _pad_installed:
+        return
+    import faster_whisper.transcribe as ft
+    orig = ft.pad_or_trim
+    ft.pad_or_trim = lambda array, length=3000, *, axis=-1: orig(array, getattr(_CTX, "frames", length), axis=axis)
+    _pad_installed = True
+
+
+_SENT_END = re.compile(r"(?<=[.!?。！？])\s*")
+
+
+def _norm(sentence):
+    return re.sub(r"[\s.!?。！？,，、…~]+", "", sentence).lower()
+
+
+def has_repeat(text):
+    """같은 문장이 연달아 반복되면 True (짧은 입력에서 Whisper 가 가끔 내는 반복 오류)."""
+    parts = [_norm(x) for x in _SENT_END.split(text) if _norm(x)]
+    return any(a == b for a, b in zip(parts, parts[1:]))
+
+
+def dedupe_sentences(text):
+    """연달아 반복된 문장을 하나로 줄임."""
+    out, last = [], None
+    for x in (y for y in _SENT_END.split(text) if y.strip()):
+        if _norm(x) != last:
+            out.append(x.strip())
+        last = _norm(x)
+    return " ".join(out)
+
+
+def transcribe_adaptive(model, audio, lang, hotwords=None):
+    """발화 길이에 맞는 입력 길이로 인식. 반복 오류(압축률이 높은 결과)가 나오면 30초 방식으로 다시 시도."""
+    _install_pad()
+    fe = model.feature_extractor
+    saved = (fe.n_samples, fe.nb_max_frames)
+
+    def run(frames):
+        _CTX.frames = frames
+        fe.nb_max_frames, fe.n_samples = frames, frames * fe.hop_length
+        try:
+            segs, info = model.transcribe(audio, language=lang, beam_size=1, vad_filter=True,
+                                          condition_on_previous_text=False, temperature=0.0,
+                                          without_timestamps=True, hotwords=hotwords)
+            return list(segs), info
+        finally:
+            _CTX.frames = 3000
+            fe.n_samples, fe.nb_max_frames = saved
+
+    if lang is None:  # 자동 언어 감지는 30초 전체를 써야 정확
+        return run(3000)
+    frames = min(3000, max(600, int(math.ceil((len(audio) / SR + 1.0) * 100 / 50)) * 50))
+    segs, info = run(frames)
+    if frames < 3000 and segs and (max(x.compression_ratio for x in segs) > 2.4
+                                   or has_repeat("".join(x.text for x in segs))):
+        segs, info = run(3000)  # 반복 오류 -> 30초 방식으로 다시
+    return segs, info
 
 
 def release_model():
@@ -838,10 +906,8 @@ class Engine:
         if 0.01 < peak < 0.5:  # 작은 마이크 소리를 키워 인식률 향상
             audio = audio * (0.7 / peak)
         lang = None if c["source"] == "auto" else c["source"]
-        segs, info = self.model.transcribe(
-            audio, language=lang, beam_size=1, vad_filter=True, condition_on_previous_text=False,
-            temperature=0.0, without_timestamps=True, hotwords=(c["vocab"].strip() or None))
-        text = "".join(s.text for s in segs if s.no_speech_prob < 0.6 and s.avg_logprob > -1.2).strip()
+        segs, info = transcribe_adaptive(self.model, audio, lang, c["vocab"].strip() or None)
+        text = dedupe_sentences("".join(s.text for s in segs if s.no_speech_prob < 0.6 and s.avg_logprob > -1.2).strip())
         low = text.lower()
         if any(h in low and len(low) < len(h) + 12 for h in HALLUCINATIONS):
             text = ""
