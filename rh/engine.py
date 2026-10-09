@@ -43,8 +43,14 @@ HALLUCINATIONS = (
     "thanks for watching", "thank you for watching", "subtitles by", "please subscribe",
 )
 
+MIN_VOICED = 0.15  # 이만큼은 이어서 말해야 인식으로 넘김 (초). '야' 같은 한 음절 호출도 잡도록 짧게, 순간 소음은 아래 디바운스가 거름
+PROMPT_SEC = 1.05  # 이보다 짧은 '한 단어'에만 호출어 힌트를 줌 (여러 단어 문장에 주면 오히려 틀림)
+SHORT_SEC = 1.5  # 이보다 짧은 말은 '호출'로 보고 판정을 조금 느슨하게 (Whisper 내부 음성 판정 + 결과 걸러내기)
 PRE_CHUNKS = 6  # 말이 시작되기 직전 보존할 조각 수 (1조각 = 0.05초)
-STT_BEAM = 1  # Whisper 탐색 폭 (클수록 정확해지지만 느려짐)
+_CORES = os.cpu_count() or 4
+# Whisper 탐색 폭. 측정(small, 소음 섞은 합성 음성): 1 -> 3 -> 5 로 오류율 26.9% -> 20.3% -> 18.2%, 8코어 PC에서 시간 차이는 거의 없음(약 190~207ms).
+# 코어가 적은 PC는 느려질 수 있어서 코어 수에 맞춰 정함.
+STT_BEAM = 5 if _CORES >= 8 else 3 if _CORES >= 4 else 1
 NR_ALPHA = {"off": 0.0, "low": 1.0, "high": 2.0}  # 노이즈 제거 강도
 
 
@@ -174,7 +180,16 @@ def record_ctx_cost(model, frames, ms):
             ema[b] = 0.95 * ema[b] + 0.05 * (b * 0.3)
 
 
-def _run_ctx(model, audio, lang, hotwords, frames, vad=True):
+# 짧은 호출('야', '저기요')용 Whisper 내부 음성 판정 옵션: 기본(임계 0.5)은 0.3초짜리 한 음절을 소음으로 버림
+SHORT_VAD = {"threshold": 0.3, "min_speech_duration_ms": 80, "speech_pad_ms": 250}
+
+
+# 짧은 호출은 Whisper 가 엉뚱한 말(예: '야' -> 'Yes.')로 듣기 쉬워서, 흔한 호출어를 힌트로 줌 (짧은 말에만 사용)
+SHORT_PROMPT = {"ko": "야, 저기요, 여기요, 네, 아니요, 잠깐만.", "ja": "ねえ、すみません、はい、いいえ、ちょっと待って。",
+                "en": "Hey, excuse me, yes, no, hold on."}
+
+
+def _run_ctx(model, audio, lang, hotwords, frames, vad=True, vad_opts=None, prompt=None):
     """입력 길이(프레임)를 지정해서 인식."""
     _install_pad()
     fe = model.feature_extractor
@@ -184,7 +199,8 @@ def _run_ctx(model, audio, lang, hotwords, frames, vad=True):
     try:
         segs, info = model.transcribe(audio, language=lang, beam_size=STT_BEAM, vad_filter=vad,
                                       condition_on_previous_text=False, temperature=0.0,
-                                      without_timestamps=True, hotwords=hotwords)
+                                      without_timestamps=True, hotwords=hotwords,
+                                      vad_parameters=vad_opts if vad else None, initial_prompt=prompt)
         return list(segs), info
     finally:
         _CTX.frames = 3000
@@ -197,12 +213,15 @@ def transcribe_adaptive(model, audio, lang, hotwords=None):
         return _run_ctx(model, audio, lang, hotwords, 3000)
     needed = int(math.ceil((len(audio) / SR + 1.0) * 100 / 50)) * 50  # 발화 길이 + 1초 여유
     frames = pick_ctx_frames(model, needed)
+    short = len(audio) / SR < SHORT_SEC
+    vad_opts = SHORT_VAD if short else None
+    prompt = SHORT_PROMPT.get(lang) if len(audio) / SR < PROMPT_SEC else None
     t0 = time.time()
-    segs, info = _run_ctx(model, audio, lang, hotwords, frames)
+    segs, info = _run_ctx(model, audio, lang, hotwords, frames, vad_opts=vad_opts, prompt=prompt)
     record_ctx_cost(model, frames, (time.time() - t0) * 1000)
     if frames < 3000 and segs and (max(x.compression_ratio for x in segs) > 2.4
                                    or has_repeat("".join(x.text for x in segs))):
-        segs, info = _run_ctx(model, audio, lang, hotwords, 3000)  # 반복 오류 -> 30초 방식으로 다시
+        segs, info = _run_ctx(model, audio, lang, hotwords, 3000, vad_opts=vad_opts, prompt=prompt)  # 반복 오류 -> 30초 방식으로 다시
     return segs, info
 
 
@@ -502,16 +521,6 @@ def _deepl(text, src, tgt, key, cfg=None):
     return r["translations"][0]["text"]
 
 
-def _google_cloud(text, src, tgt, key, cfg=None):
-    body = {"q": text, "target": tgt, "format": "text"}
-    if src in MM_CODES:
-        body["source"] = src
-    r = _http_json("https://translation.googleapis.com/language/translate/v2", body,
-                   {"X-goog-api-key": key, "Content-Type": "application/json"})
-    return html.unescape(r["data"]["translations"][0]["translatedText"])
-
-
-
 # ---------------------------------------------------------------- 오프라인 번역 (M2M100, MIT 라이선스)
 # 한도 없음 / 인터넷 불필요 / 문장이 PC 밖으로 나가지 않음. 받은 파일은 SHA-256 으로 검증합니다.
 MT_MODELS = {
@@ -803,8 +812,7 @@ def _gemini(text, src, tgt, key, cfg=None):
     return out
 
 
-PROVIDERS = {"local": (_local, False), "mymemory": (_mymemory, False), "deepl": (_deepl, True),
-             "google": (_google_cloud, True), "gemini": (_gemini, True)}
+PROVIDERS = {"local": (_local, False), "mymemory": (_mymemory, False), "deepl": (_deepl, True), "gemini": (_gemini, True)}
 
 
 def translation_allowed(cfg):
@@ -1038,7 +1046,7 @@ class Engine:
                 buf.append(chunk)
                 total += dur
                 if silent >= c["silence_sec"] or total >= c["max_sec"]:
-                    if voiced >= 0.35:
+                    if voiced >= MIN_VOICED:
                         while self.utt_q.qsize() >= 3:
                             try:
                                 self.utt_q.get_nowait()
@@ -1087,7 +1095,9 @@ class Engine:
             audio = audio * (0.7 / peak)
         lang = None if c["source"] == "auto" else c["source"]
         segs, info = transcribe_adaptive(self.model, audio, lang, c["vocab"].strip() or None)
-        text = dedupe_sentences("".join(s.text for s in segs if s.no_speech_prob < 0.6 and s.avg_logprob > -1.2).strip())
+        short = len(audio) / SR < SHORT_SEC  # 짧은 한마디는 확신도가 낮게 나오는 게 정상이라 기준을 조금 풀어줌
+        nsp, lp = (0.8, -1.7) if short else (0.6, -1.2)
+        text = dedupe_sentences("".join(s.text for s in segs if s.no_speech_prob < nsp and s.avg_logprob > lp).strip())
         low = text.lower()
         if any(h in low and len(low) < len(h) + 12 for h in HALLUCINATIONS):
             text = ""

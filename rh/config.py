@@ -46,12 +46,12 @@ DEFAULTS = {
     "hotkey": "off",  # 일시정지/재개 전역 단축키 (off 또는 hotkey.HOTKEYS 의 키)
     "hotkey": "off",  # 일시정지/재개 전역 단축키 (off 또는 hotkey.HOTKEYS 의 키)
     "vocab": "",              # 자주 쓰는 단어(이름 등) - 인식 도우미
-    "translator": "local",    # local(오프라인·한도 없음, 기본) / mymemory / deepl / google / gemini (사용자 본인의 공식 API 키)
+    "translator": "local",    # local(오프라인·한도 없음, 기본) / mymemory(키 없음) / deepl / gemini (사용자 본인의 공식 API 키)
     "mt_quality": "standard", # 오프라인 번역 품질: standard(가볍고 빠름) / high(더 자연스러움, 1.25GB)
     "gemini_model": "",       # 비우면 기본(gemini-flash-lite-latest). 모델이 종료되면 자동으로 찾아서 기억
     "api_keys": {},           # {서비스: DPAPI로 암호화된 키}
     "consent_done": False,    # 첫 실행 개인정보 안내를 봤는지
-    "consent_translate": False,  # 번역을 위해 인식된 문장을 Google 번역 서버로 전송하는 것에 동의
+    "consent_translate": False,  # 번역을 위해 인식된 문장을 온라인 번역 서비스로 전송하는 것에 동의
     "consent_update": False,  # 새 버전 확인(github.com 접속)에 동의
     "last_seen_version": "",  # 업데이트 내역 자동 표시용
 }
@@ -64,6 +64,8 @@ def load_config():
         cfg.update({k: v for k, v in data.items() if k in DEFAULTS})
     except Exception:
         pass
+    if cfg["translator"] not in ("local", "mymemory", "deepl", "gemini"):  # 예전 버전에서 고른 서비스(예: google)는 오프라인으로
+        cfg["translator"] = "local"
     if cfg["ui_lang"] not in ("ko", "ja", "en"):
         cfg["ui_lang"] = _system_ui_lang()
     if cfg["source"] not in ("auto", "ko", "ja", "en"):

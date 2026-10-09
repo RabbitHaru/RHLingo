@@ -34,9 +34,9 @@ FIELD_H = ("#E0DBFA", "#363652")
 TEXT, SUB = ("#26224A", "#ECE9FF"), ("#7B7799", "#9593B5")
 GREEN, ORANGE, RED = ("#1FA971", "#6EE7A8"), ("#D98A1F", "#FFC46B"), ("#D93A5C", "#FF8AA0")
 MAX_BUBBLES = 60
+IDLE_RELEASE_MS = 5 * 60 * 1000  # 멈춘 채 이만큼 지나면 모델을 메모리에서 내림
 RESTART_KEYS = {"mic", "model", "device_type", "vrc_mute_sync", "osc_ip", "osc_port", "osc_in_port"}
-KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "google": "https://cloud.google.com/translate/docs/setup",
-            "gemini": "https://aistudio.google.com/apikey"}
+KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "gemini": "https://aistudio.google.com/apikey"}
 
 
 warnings.filterwarnings("ignore", message=".*not CTkImage.*")
@@ -186,8 +186,8 @@ class MainWindow(ctk.CTk):
         self.cfg = load_config()
         i18n.set_lang(self.cfg["ui_lang"])
         ctk.set_appearance_mode(self.cfg["theme"])
-        self.geometry("1000x620")
-        self.minsize(900, 560)
+        self.geometry("1060x640")
+        self.minsize(980, 580)
         self.attributes("-topmost", self.cfg["always_on_top"])
         self.events = queue.Queue()
         self.output = Output(self.cfg)
@@ -200,6 +200,7 @@ class MainWindow(ctk.CTk):
         self._shown_state = None
         self._mt_pct = None  # 오프라인 번역 모델 다운로드 진행률
         self._stt_pct = None  # 음성 인식 모델 다운로드 진행률
+        self._stt_dl = self._mt_dl = None  # 지금 받는 중인 모델 이름
         self.update_info = None
         self.hotkey = hotkey.Hotkey(lambda: self.events.put(("hotkey",)))
         self.build()
@@ -221,6 +222,7 @@ class MainWindow(ctk.CTk):
         self.check_update_if_allowed()
         self.apply_hotkey()
         self._preload()
+        self._schedule_idle_release()  # 시작 안 하고 두면 5분 뒤 미리 올려 둔 모델을 내림
 
     def _preload(self):
         """이미 받아둔 모델이 있으면 미리 메모리에 올려 '시작'을 즉시 되게 함 (다운로드는 하지 않음)."""
@@ -247,7 +249,7 @@ class MainWindow(ctk.CTk):
         self.rowconfigure(0, weight=1)
 
         # ── 왼쪽: 컨트롤 패널 ──
-        side = ctk.CTkFrame(self, fg_color=CARD, corner_radius=26, width=350)
+        side = ctk.CTkFrame(self, fg_color=CARD, corner_radius=26, width=380)
         side.grid(row=0, column=0, sticky="ns", padx=(16, 8), pady=16)
         side.pack_propagate(False)
 
@@ -284,6 +286,8 @@ class MainWindow(ctk.CTk):
         except Exception:
             pass
         ctk.CTkLabel(brand, text=T("title"), font=f(24, True), text_color=TEXT, anchor="w").pack(side="left")
+        ctk.CTkLabel(brand, text=f"v{APP_VERSION}", font=f(11, True), text_color=SUB, fg_color=FIELD, corner_radius=10,
+                     width=10, height=22).pack(side="right", pady=(8, 0))
         ctk.CTkLabel(side, text=T("tagline"), font=f(11), text_color=SUB, anchor="w").pack(fill="x", padx=26, pady=(2, 0))
         self.update_lbl = ctk.CTkLabel(side, text="", font=f(11, True), text_color=PURPLE, cursor="hand2", anchor="w")
         self.update_lbl.pack(fill="x", padx=26)
@@ -304,7 +308,7 @@ class MainWindow(ctk.CTk):
         ctk.CTkLabel(langs, text="⇣  " + T("translate_to"), font=f(12), text_color=SUB, anchor="w").pack(fill="x", padx=16, pady=(10, 4))
         self.target_btn = ctk.CTkSegmentedButton(
             langs, values=[T("stt_only")] + [NATIVE[c] for c in LANGS], command=self._on_target, height=36,
-            corner_radius=18, font=f(11, True), text_color=TEXT, selected_color=PURPLE, selected_hover_color=PURPLE_H,
+            corner_radius=18, font=f(12, True), text_color=TEXT, selected_color=PURPLE, selected_hover_color=PURPLE_H,
             unselected_color=CARD, unselected_hover_color=FIELD_H)
         self.target_btn.pack(fill="x", padx=14, pady=(0, 14))
         self.refresh_target()
@@ -395,13 +399,25 @@ class MainWindow(ctk.CTk):
         self.bubbles.append(b)
         while len(self.bubbles) > MAX_BUBBLES:
             self.bubbles.pop(0).destroy()
-        self.after(50, lambda: self.hist._parent_canvas.yview_moveto(1.0))
+        self.after(50, self._scroll_end)
+
+    def _scroll_end(self):
+        """맨 아래로. 스크롤 영역 크기를 먼저 다시 계산해서, 지운 뒤에도 새 말풍선이 보이게."""
+        cv = self.hist._parent_canvas
+        cv.update_idletasks()
+        cv.configure(scrollregion=cv.bbox("all"))
+        cv.yview_moveto(1.0)
 
     def clear_history(self):
         for b in self.bubbles:
             b.destroy()
         self.bubbles = []
         self.partial_lbl.configure(text="")
+        self.empty = ctk.CTkLabel(self.hist, text=T("empty"), font=f(14), text_color=SUB, justify="center")
+        self.empty.pack(pady=80)
+        self.hist.update_idletasks()
+        self._scroll_end()
+        self.hist._parent_canvas.yview_moveto(0.0)
 
     # -- 주기 처리 (80ms) -------------------------------------------------
     def _tick(self):
@@ -413,6 +429,7 @@ class MainWindow(ctk.CTk):
         e = self.engine
         if e is not None and not e.alive:
             self.engine = e = None
+            self._schedule_idle_release()
             if self.restart_pending:
                 self.restart_pending = False
                 self.start_engine()
@@ -516,7 +533,25 @@ class MainWindow(ctk.CTk):
             self.partial_lbl.configure(text="")
 
     # -- 동작 -----------------------------------------------------------
+    # -- 쓰지 않을 때 메모리 비우기 (멈춘 지 5분 지나면 모델을 내림, 다시 시작해도 2초 안팎) -------
+    def _schedule_idle_release(self):
+        self._cancel_idle_release()
+        self._idle_job = self.after(IDLE_RELEASE_MS, self._release_idle)
+
+    def _cancel_idle_release(self):
+        job = getattr(self, "_idle_job", None)
+        if job is not None:
+            self.after_cancel(job)
+            self._idle_job = None
+
+    def _release_idle(self):
+        self._idle_job = None
+        if self.engine is None:
+            release_model()
+            release_mt()
+
     def start_engine(self):
+        self._cancel_idle_release()
         name = model_name(self.cfg)
         if not model_cached(name):  # 크기를 알리고 허락 -> 다운로드(진행률 표시) -> 끝나면 자동 시작
             if self._stt_pct is None:
@@ -537,7 +572,7 @@ class MainWindow(ctk.CTk):
         body = T("dl_body").format(mb=MODEL_SIZES_MB[name], name=name)
         if not ask(self, T("dl_title"), body, T("dl_yes"), T("dl_no")):
             return False
-        self._stt_pct = 0
+        self._stt_pct, self._stt_dl = 0, name
 
         def run():
             try:
@@ -550,6 +585,7 @@ class MainWindow(ctk.CTk):
                 self.events.put(("error", f"{T('dl_progress')}: {type(e).__name__}"))
             finally:
                 self._stt_pct = None
+                self._stt_dl = None
         threading.Thread(target=run, daemon=True).start()
         return True
 
@@ -561,7 +597,7 @@ class MainWindow(ctk.CTk):
         body = T("dl_body").format(mb=MT_MODELS[tier]["size_mb"], name=T("mt_name_" + tier))
         if not ask(self, T("dl_title"), body, T("dl_yes"), T("dl_no")):
             return False
-        self._mt_pct = 0
+        self._mt_pct, self._mt_dl = 0, tier
 
         def run():
             try:
@@ -572,6 +608,7 @@ class MainWindow(ctk.CTk):
                 self.events.put(("error", f"{T('dl_mt_progress')}: {e}"))
             finally:
                 self._mt_pct = None
+                self._mt_dl = None
         threading.Thread(target=run, daemon=True).start()
         return True
 
@@ -735,8 +772,8 @@ class MainWindow(ctk.CTk):
 
 # ====================================================================== 설정 창 (왼쪽 메뉴 + 오른쪽 내용)
 class SettingsWindow(ctk.CTkToplevel):
-    PAGES = (("general", "sec_general"), ("audio", "sec_audio"), ("translate", "sec_translate"),
-             ("vrc", "sec_vrc"), ("privacy", "sec_privacy"))
+    PAGES = (("general", "sec_general", "🏠"), ("audio", "sec_audio", "🎤"), ("models", "sec_modelpage", "📦"),
+             ("translate", "sec_translate", "🌐"), ("vrc", "sec_vrc", "🎮"), ("privacy", "sec_privacy", "🔒"))
 
     def __init__(self, app, page="general"):
         super().__init__(app, fg_color=BG)
@@ -747,19 +784,19 @@ class SettingsWindow(ctk.CTkToplevel):
         self.sliders = {}
         self._cal = None
         self.title(T("settings"))
-        self.geometry("820x600")
-        self.minsize(760, 520)
+        self.geometry("860x640")
+        self.minsize(780, 540)
         self.attributes("-topmost", self.cfg["always_on_top"])
         self.after(150, self.lift)
 
-        nav = ctk.CTkFrame(self, fg_color=CARD, corner_radius=22, width=190)
+        nav = ctk.CTkFrame(self, fg_color=CARD, corner_radius=22, width=200)
         nav.pack(side="left", fill="y", padx=(14, 8), pady=14)
         nav.pack_propagate(False)
-        ctk.CTkLabel(nav, text="⚙  " + T("settings"), font=f(16, True), text_color=TEXT, anchor="w").pack(
-            fill="x", padx=20, pady=(22, 14))
+        ctk.CTkLabel(nav, text="⚙  " + T("settings"), font=f(17, True), text_color=TEXT, anchor="w").pack(
+            fill="x", padx=20, pady=(22, 16))
         self.nav_btns, self.pages = {}, {}
-        for key, label in self.PAGES:
-            b = ctk.CTkButton(nav, text=T(label), height=40, corner_radius=20, font=f(13, True), anchor="w",
+        for key, label, icon in self.PAGES:
+            b = ctk.CTkButton(nav, text=f"{icon}   {T(label)}", height=44, corner_radius=22, font=f(14, True), anchor="w",
                               fg_color="transparent", hover_color=FIELD_H, text_color=TEXT,
                               command=lambda k=key: self.show(k))
             b.pack(fill="x", padx=12, pady=2)
@@ -769,7 +806,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.content = ctk.CTkFrame(self, fg_color="transparent")
         self.content.pack(side="left", fill="both", expand=True, padx=(0, 14), pady=14)
-        for key, _ in self.PAGES:
+        for key, _, _ in self.PAGES:
             self.body = ScrollFrame(self.content, fg_color="transparent")
             self.pages[key] = self.body
             getattr(self, f"_page_{key}")()
@@ -790,8 +827,10 @@ class SettingsWindow(ctk.CTkToplevel):
         self.option("theme", T("theme"), [("system", T("theme_system")), ("light", T("theme_light")),
                                           ("dark", T("theme_dark"))], ui=True)
         self.switch("always_on_top", T("always_on_top"), ui=True)
-        self.option("hotkey", T("hotkey"), [("off", T("hk_off"))] + [(k, v) for k, v in hotkey.LABELS.items()],
-                    cb=lambda v: self.app.apply_hotkey())
+        hk = self.option("hotkey", T("hotkey"), [("off", T("hk_off"))] + [(k, v) for k, v in hotkey.LABELS.items()],
+                         cb=lambda v: self.app.apply_hotkey())
+        ctk.CTkLabel(hk.master, text=T("hotkey_hint"), font=f(11), text_color=SUB, anchor="w", justify="left",
+                     wraplength=520).pack(fill="x", padx=14, pady=(0, 12))
 
     def _page_audio(self):
         self.section(T("sec_audio"))
@@ -799,45 +838,56 @@ class SettingsWindow(ctk.CTkToplevel):
         soft_button(self.mic_menu.master, "⟳ " + T("refresh"), self._refresh_mics, height=28).pack(
             anchor="w", padx=14, pady=(0, 10))
         self._build_meter()
-        self.slider("sensitivity", T("sensitivity"), 0, 100, 100, fmt="{:.0f}")
-        calcard = self.card()
-        self.cal_btn = pill_button(calcard, "🎯 " + T("cal_btn"), self._start_cal, height=34)
-        self.cal_btn.pack(anchor="w", padx=14, pady=(12, 4))
-        self.cal_lbl = ctk.CTkLabel(calcard, text="", font=f(12), text_color=SUB, anchor="w", justify="left", wraplength=530)
-        self.cal_lbl.pack(fill="x", padx=16, pady=(0, 12))
+        self.slider("sensitivity", T("sensitivity"), 0, 100, 100, fmt="{:.0f}", extra=self._cal_row)  # 자동 맞춤은 같은 카드 안에
         self.slider("silence_sec", T("silence"), 0.2, 1.5, 26, fmt="{:.1f}s")
-        self.option("noise_reduction", T("noise"), [("off", T("nr_off")), ("low", T("nr_low")), ("high", T("nr_high"))])
-        ctk.CTkLabel(self.body, text=T("nr_hint"), font=f(11), text_color=SUB, anchor="w", justify="left",
-                     wraplength=530).pack(fill="x", padx=14, pady=(0, 6))
-        self.option("model", T("model"), [(m, T("m_" + m)) for m in
-                                          ("auto", "tiny", "base", "small", "medium", "large-v3-turbo")],
-                    cb=lambda v: self.app.engine is None and self.app.after(80, self.app.ensure_stt_model))
-        self._build_stt_card()
-        self.option("device_type", T("device"), [("auto", T("dev_auto")), ("cuda", T("dev_gpu")), ("cpu", T("dev_cpu"))])
+        nr = self.option("noise_reduction", T("noise"), [("off", T("nr_off")), ("low", T("nr_low")), ("high", T("nr_high"))])
+        ctk.CTkLabel(nr.master, text=T("nr_hint"), font=f(11), text_color=SUB, anchor="w", justify="left",
+                     wraplength=520).pack(fill="x", padx=14, pady=(0, 12))
+        self.group(T("grp_recog"))
         vcard = self.card()
-        ctk.CTkLabel(vcard, text=T("vocab"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
+        ctk.CTkLabel(vcard, text=T("vocab"), font=f(13, True), text_color=TEXT).pack(anchor="w", padx=14, pady=(12, 4))
         self.vocab = ctk.CTkEntry(vcard, placeholder_text=T("vocab_hint"), height=34, corner_radius=17, font=f(13),
                                   fg_color=FIELD, border_width=0)
         self.vocab.insert(0, self.cfg["vocab"])
         self.vocab.pack(fill="x", padx=14, pady=(0, 12))
         self.vocab.bind("<FocusOut>", self._save_vocab)
         self.vocab.bind("<Return>", self._save_vocab)
-        self.switch("keep_model", T("keep_model"))
         self.switch("live_preview", T("live_preview"),
                     initial=preview_default() if self.cfg["live_preview"] is None else self.cfg["live_preview"])
-        ctk.CTkLabel(self.body, text=T("restart_note"), font=f(11), text_color=SUB, anchor="w").pack(fill="x", padx=14, pady=(2, 10))
+        self.switch("keep_model", T("keep_model"))
+
+    def _cal_row(self, card):
+        """민감도 카드 안의 '마이크 자동 맞춤' 줄 (버튼 + 진행/결과 문구)."""
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=14, pady=(0, 12))
+        self.cal_btn = pill_button(row, "🎯  " + T("cal_btn"), self._start_cal, height=32)
+        self.cal_btn.pack(side="left")
+        self.cal_lbl = ctk.CTkLabel(row, text=T("cal_hint"), font=f(12), text_color=SUB, anchor="w", justify="left", wraplength=340)
+        self.cal_lbl.pack(side="left", fill="x", expand=True, padx=(12, 0))
+
+    def _page_models(self):
+        self.section(T("sec_modelpage"))
+        self.group(T("sec_models"))
+        self._build_stt_card()
+        self.option("device_type", T("device"), [("auto", T("dev_auto")), ("cuda", T("dev_gpu")), ("cpu", T("dev_cpu"))])
+        self.group(T("mt_card_title"))
+        self._build_mt_card()
+        ctk.CTkLabel(self.body, text=T("sm_hint") + "  " + T("restart_note"), font=f(11), text_color=SUB, anchor="w",
+                     justify="left", wraplength=540).pack(fill="x", padx=14, pady=(6, 10))
 
     def _page_translate(self):
         self.section(T("sec_translate"))
         prov = self.option("translator", T("tr_provider"),
                     [("local", T("tp_local")), ("mymemory", T("tp_mymemory")), ("deepl", T("tp_deepl")),
-                     ("google", T("tp_google")), ("gemini", T("tp_gemini"))], cb=lambda v: self._refresh_key_ui())
-        qual = self.option("mt_quality", T("mt_quality"), [("standard", T("mq_standard")), ("high", T("mq_high"))],
-                           cb=lambda v: (self._refresh_mt(), self.app.after(80, self.app.ensure_mt)))
-        self._prov_card, self._qual_card = prov.master, qual.master
-        self._build_mt_card()
+                     ("gemini", T("tp_gemini"))], cb=lambda v: self._refresh_key_ui())
+        self._prov_card = prov.master
+        # 오프라인을 골랐을 때: 모델 상태 + '모델' 페이지로 가는 버튼 (다운로드 버튼을 찾기 쉽게)
+        self.local_card = ctk.CTkFrame(self.body, fg_color=CARD, corner_radius=20)
+        self.local_lbl = ctk.CTkLabel(self.local_card, text="", font=f(13), text_color=TEXT, anchor="w", justify="left", wraplength=520)
+        self.local_lbl.pack(fill="x", padx=16, pady=(12, 6))
+        soft_button(self.local_card, "📦  " + T("mt_goto"), lambda: self.show("models")).pack(anchor="w", padx=14, pady=(0, 14))
         card = self.card()
-        ctk.CTkLabel(card, text=T("tr_key"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
+        ctk.CTkLabel(card, text=T("tr_key"), font=f(13, True), text_color=TEXT).pack(anchor="w", padx=14, pady=(12, 4))
         self._key_card = card
         self.key_entry = ctk.CTkEntry(card, show="•", height=36, corner_radius=18, font=f(13), fg_color=FIELD,
                                       border_width=0)
@@ -851,13 +901,13 @@ class SettingsWindow(ctk.CTkToplevel):
         self.rm_key_btn = soft_button(row, T("tr_key_remove"), self._remove_key, height=32)
         self.rm_key_btn.pack(side="left", padx=(0, 8))
         pill_button(row, T("tr_test"), self._test_translation, height=32).pack(side="left")
-        self.test_lbl = ctk.CTkLabel(card, text="", font=f(12), text_color=SUB, anchor="w", justify="left", wraplength=530)
+        self.test_lbl = ctk.CTkLabel(card, text="", font=f(12), text_color=SUB, anchor="w", justify="left", wraplength=520)
         self.test_lbl.pack(fill="x", padx=16, pady=(2, 0))
         ctk.CTkLabel(card, text=T("tr_key_note"), font=f(11), text_color=SUB, anchor="w", justify="left",
-                     wraplength=530).pack(fill="x", padx=16, pady=(4, 12))
+                     wraplength=520).pack(fill="x", padx=16, pady=(4, 12))
         # Gemini 전용: 모델 이름 + 무료 사용량의 데이터 사용 안내 (Gemini 를 골랐을 때만 보임)
         self.gem_card = ctk.CTkFrame(self.body, fg_color=CARD, corner_radius=20)
-        ctk.CTkLabel(self.gem_card, text=T("tr_model"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
+        ctk.CTkLabel(self.gem_card, text=T("tr_model"), font=f(13, True), text_color=TEXT).pack(anchor="w", padx=14, pady=(12, 4))
         self.gem_entry = ctk.CTkEntry(self.gem_card, placeholder_text=T("tr_model_hint"), height=34, corner_radius=17,
                                       font=f(13), fg_color=FIELD, border_width=0)
         self.gem_entry.insert(0, self.cfg.get("gemini_model", ""))
@@ -865,11 +915,11 @@ class SettingsWindow(ctk.CTkToplevel):
         self.gem_entry.bind("<Return>", self._save_gem_model)
         self.gem_entry.bind("<FocusOut>", self._save_gem_model)
         ctk.CTkLabel(self.gem_card, text="⚠ " + T("tr_gemini_note"), font=f(11), text_color=ORANGE, anchor="w", justify="left",
-                     wraplength=530).pack(fill="x", padx=16, pady=(8, 12))
+                     wraplength=520).pack(fill="x", padx=16, pady=(8, 12))
         tip = ctk.CTkFrame(self.body, fg_color=FIELD, corner_radius=16)
         tip.pack(fill="x", padx=4, pady=6)
         ctk.CTkLabel(tip, text="💡 " + T("tr_tip"), font=f(12), text_color=TEXT, anchor="w", justify="left",
-                     wraplength=530).pack(fill="x", padx=16, pady=12)
+                     wraplength=520).pack(fill="x", padx=16, pady=12)
         self._refresh_key_ui()
 
     def _page_vrc(self):
@@ -908,6 +958,19 @@ class SettingsWindow(ctk.CTkToplevel):
     def section(self, text):
         ctk.CTkLabel(self.body, text=text, font=f(18, True), text_color=TEXT, anchor="w").pack(fill="x", padx=8, pady=(6, 8))
 
+    def group(self, text):
+        """페이지 안의 소제목 (카드 묶음 구분)."""
+        ctk.CTkLabel(self.body, text=text, font=f(12, True), text_color=PURPLE, anchor="w").pack(fill="x", padx=10, pady=(14, 2))
+
+    @staticmethod
+    def _set(w, **kw):
+        """값이 바뀐 것만 위젯에 반영 (같은 값을 계속 넣으면 다시 그려져서 깜빡이는 걸 막음)."""
+        last = w.__dict__.setdefault("_last", {})
+        changed = {k: v for k, v in kw.items() if k not in last or last[k] != v}
+        if changed:
+            w.configure(**changed)
+            last.update(changed)
+
     def card(self):
         c = ctk.CTkFrame(self.body, fg_color=CARD, corner_radius=20)
         c.pack(fill="x", padx=4, pady=5)
@@ -920,7 +983,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def option(self, key, label, items, ui=False, cb=None):
         card = self.card()
-        ctk.CTkLabel(card, text=label, font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
+        ctk.CTkLabel(card, text=label, font=f(13, True), text_color=TEXT).pack(anchor="w", padx=14, pady=(12, 4))
         by_label = {l: c for c, l in items}
         cur = next((l for c, l in items if c == self.cfg[key]), items[0][1])
 
@@ -959,11 +1022,11 @@ class SettingsWindow(ctk.CTkToplevel):
         sw.pack(anchor="w", padx=14, pady=14)
         sw._text_label.configure(wraplength=530, justify="left")
 
-    def slider(self, key, label, lo, hi, steps, fmt):
+    def slider(self, key, label, lo, hi, steps, fmt, extra=None):
         card = self.card()
         row = ctk.CTkFrame(card, fg_color="transparent")
-        row.pack(fill="x", padx=14, pady=(10, 0))
-        ctk.CTkLabel(row, text=label, font=f(12), text_color=SUB).pack(side="left")
+        row.pack(fill="x", padx=14, pady=(12, 0))
+        ctk.CTkLabel(row, text=label, font=f(13, True), text_color=TEXT).pack(side="left")
         val = ctk.CTkLabel(row, text=fmt.format(self.cfg[key]), font=f(12, True), text_color=TEXT)
         val.pack(side="right")
 
@@ -977,9 +1040,11 @@ class SettingsWindow(ctk.CTkToplevel):
         s = ctk.CTkSlider(card, from_=lo, to=hi, number_of_steps=steps, command=on, progress_color=PURPLE,
                           button_color=PURPLE, button_hover_color=PURPLE_H, fg_color=FIELD)
         s.set(self.cfg[key])
-        s.pack(fill="x", padx=14, pady=(4, 12))
+        s.pack(fill="x", padx=14, pady=(4, 10 if extra else 12))
         tk.Misc.unbind(s._canvas, "<MouseWheel>")  # 휠은 페이지 스크롤 전용 (값이 실수로 바뀌는 것 방지)
         self.sliders[key] = (s, on)
+        if extra:
+            extra(card)
 
     # -- 마이크 레벨 미터 -------------------------------------------------
     def _build_meter(self):
@@ -1061,7 +1126,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self.test_lbl.configure(text=f"{T('tr_test_ok') if ok else T('tr_test_fail')}: {msg}",
                                     text_color=GREEN if ok else RED)
         self._n = getattr(self, "_n", 0) + 1
-        if self._n % 12 == 0 and hasattr(self, "mt_lbl"):
+        if self._n % 12 == 0 and hasattr(self, "mt_rows"):
             self._refresh_mt()
         if self._n % 12 == 0 and hasattr(self, "stt_rows"):
             self._refresh_stt()
@@ -1077,11 +1142,17 @@ class SettingsWindow(ctk.CTkToplevel):
         thr = src.nf.threshold(self.cfg["sensitivity"])  # 주변 소음에 따라 자동으로 오르는 실제 기준
         on = lvl > thr
         db = 20 * math.log10(max(lvl, 1e-5))
-        self.mbar.set(meter_value(lvl))
-        self.mbar.configure(progress_color=GREEN if on else PURPLE)
-        self.marker.place(in_=self.mbar, relx=meter_value(thr), rely=0.5, anchor="center")
-        self.lvl_txt.configure(text=f"{db:.0f} dB · " + (T("lvl_on") if on else T("lvl_off")),
-                               text_color=GREEN if on else SUB)
+        mv = meter_value(lvl)
+        if abs(mv - getattr(self, "_smv", -1)) > 0.004:
+            self._smv = mv
+            self.mbar.set(mv)
+        self._set(self.mbar, progress_color=GREEN if on else PURPLE)
+        mp = meter_value(thr)
+        if mp != getattr(self, "_smp", None):
+            self._smp = mp
+            self.marker.place(in_=self.mbar, relx=mp, rely=0.5, anchor="center")
+        self._set(self.lvl_txt, text=f"{db:.0f} dB · " + (T("lvl_on") if on else T("lvl_off")),
+                  text_color=GREEN if on else SUB)
         self.after(60, self._tick_meter)
 
     def destroy(self):
@@ -1100,20 +1171,29 @@ class SettingsWindow(ctk.CTkToplevel):
         self.key_entry.delete(0, "end")
         self.key_entry.configure(placeholder_text=T("tr_key_saved") if saved else T("tr_key_hint"),
                                  state="normal" if needs else "disabled")
-        # 선택한 서비스에 해당하는 카드만 보이게: 오프라인 -> 품질·모델 카드 / Gemini -> 모델 이름 + 데이터 사용 경고(맨 위)
+        # 고른 서비스에 필요한 카드만: 오프라인 -> 모델 상태 카드 / Gemini -> 모델 이름 + 경고 / 키가 필요한 서비스 -> API 키 카드
+        anchor = self._prov_card
+        self.local_card.pack_forget()
+        self.gem_card.pack_forget()
         if p == "local":
-            self._qual_card.pack(fill="x", padx=4, pady=5, after=self._prov_card)
-            self._mt_card.pack(fill="x", padx=4, pady=5, after=self._qual_card)
-        else:
-            self._qual_card.pack_forget()
-            self._mt_card.pack_forget()
-        if p == "gemini":
-            self.gem_card.pack(fill="x", padx=4, pady=5, after=self._prov_card)
-        else:
-            self.gem_card.pack_forget()
+            self.local_card.pack(fill="x", padx=4, pady=5, after=anchor)
+            anchor = self.local_card
+            self._refresh_local_lbl()
+        elif p == "gemini":
+            self.gem_card.pack(fill="x", padx=4, pady=5, after=anchor)
+            anchor = self.gem_card
+        self._key_card.pack_forget()
+        if needs:
+            self._key_card.pack(fill="x", padx=4, pady=5, after=anchor)
         self.get_key_btn.configure(state="normal" if needs else "disabled")
         self.rm_key_btn.configure(state="normal" if needs and saved else "disabled")
         self.test_lbl.configure(text="")
+
+    def _refresh_local_lbl(self):
+        tier = mt_tier(self.cfg)
+        ok = mt_cached(tier)
+        self._set(self.local_lbl, text=("✓ " + T("mt_status_ok")) if ok else ("⚠ " + T("mt_status_none").format(mb=MT_MODELS[tier]["size_mb"])),
+                  text_color=GREEN if ok else ORANGE)
 
     def _save_gem_model(self, _=None):
         self.app.set_cfg("gemini_model", self.gem_entry.get().strip())
@@ -1157,68 +1237,119 @@ class SettingsWindow(ctk.CTkToplevel):
                 self._test_result = (False, type(e).__name__)
         threading.Thread(target=run, daemon=True).start()
 
-    # -- 음성 인식 모델 관리 카드 ------------------------------------------
+    # -- 모델 관리 카드: 줄마다 [고르기 ◉] [이름·크기] [상태] [다운로드/삭제 버튼 하나] ----------
+    def _model_row(self, card, text, var, value, on_pick, on_action=None):
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=12, pady=3)
+        row.columnconfigure(0, weight=1)
+        rb = ctk.CTkRadioButton(row, text=text, variable=var, value=value, font=f(12), text_color=TEXT,
+                                fg_color=PURPLE, hover_color=PURPLE_H, command=on_pick)
+        rb.grid(row=0, column=0, sticky="w", padx=(2, 8))
+        st = ctk.CTkLabel(row, text="", font=f(12), text_color=SUB, width=96, anchor="e")
+        st.grid(row=0, column=1, padx=(0, 8))
+        if on_action is None:  # 버튼이 필요 없는 줄 (자동 선택)
+            return st, None
+        btn = ctk.CTkButton(row, text="", width=104, height=30, corner_radius=15, font=f(12, True), command=on_action)
+        btn.grid(row=0, column=2)
+        return st, btn
+
+    @staticmethod
+    def _action_style(ok, busy):
+        """설치돼 있으면 '삭제'(부드러운 버튼), 아니면 '다운로드'(보라색 버튼). 받는 중이면 눌리지 않게."""
+        if ok:
+            return dict(text=T("sm_delete"), fg_color=FIELD, hover_color=FIELD_H, text_color=TEXT)
+        return dict(text="⬇ " + T("sm_download"), fg_color=PURPLE, hover_color=PURPLE_H, text_color="#FFFFFF")
+
     def _build_stt_card(self):
         card = self.card()
-        ctk.CTkLabel(card, text=T("sec_models"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 4))
+        self.stt_var = ctk.StringVar(value=self.cfg["model"])
         self.stt_rows = {}
-        for m in ("tiny", "base", "small", "medium", "large-v3-turbo"):
-            row = ctk.CTkFrame(card, fg_color="transparent")
-            row.pack(fill="x", padx=14, pady=3)
-            lbl = ctk.CTkLabel(row, text="", font=f(12), text_color=TEXT, anchor="w", justify="left", wraplength=280)
-            lbl.pack(side="left", fill="x", expand=True)
-            rm = soft_button(row, T("sm_delete"), lambda m=m: self._stt_delete(m), height=28, width=64)
-            rm.pack(side="right", padx=(6, 0))
-            dl = pill_button(row, "⬇ " + T("sm_download"), lambda m=m: self.app.ensure_stt_model(m), height=28, width=104)
-            dl.pack(side="right")
-            self.stt_rows[m] = (lbl, dl, rm)
-        ctk.CTkLabel(card, text=T("sm_hint"), font=f(11), text_color=SUB, anchor="w", justify="left",
-                     wraplength=530).pack(fill="x", padx=14, pady=(6, 12))
+        for m in ("auto", "tiny", "base", "small", "medium", "large-v3-turbo"):
+            st, btn = self._model_row(card, T("m_" + m), self.stt_var, m, lambda m=m: self._pick_stt(m),
+                                      None if m == "auto" else (lambda m=m: self._stt_action(m)))
+            self.stt_rows[m] = (st, btn)
+        ctk.CTkFrame(card, height=6, fg_color="transparent").pack()
         self._refresh_stt()
+
+    def _pick_stt(self, m):
+        self.app.set_cfg("model", m)
+        if self.app.engine is None:
+            self.app.after(80, self.app.ensure_stt_model)  # 없으면 크기를 알리고 허락받아 다운로드
+        self._refresh_stt()
+
+    def _stt_action(self, m):
+        if model_cached(m):
+            self._stt_delete(m)
+        else:
+            self.app.ensure_stt_model(m)
 
     def _refresh_stt(self):
         using, running = model_name(self.cfg), self.app.engine is not None
-        for m, (lbl, dl, rm) in self.stt_rows.items():
+        if self.stt_var.get() != self.cfg["model"]:
+            self.stt_var.set(self.cfg["model"])
+        for m, (st, btn) in self.stt_rows.items():
+            if m == "auto":
+                self._set(st, text="→ " + using, text_color=SUB)
+                continue
             ok = model_cached(m)
-            text = f"{m} · {MODEL_SIZES_MB[m]} MB · " + (T("sm_installed") if ok else T("sm_none"))
-            if m == using:
-                text += " · " + T("sm_inuse")
-            lbl.configure(text=text, text_color=GREEN if ok else SUB)
-            dl.configure(state="normal" if not ok and self.app._stt_pct is None else "disabled")
-            rm.configure(state="normal" if ok and not (m == using and running) else "disabled")
+            if m == self.app._stt_dl and self.app._stt_pct is not None:
+                self._set(st, text=f"⏳ {T('dl_progress')} {self.app._stt_pct}%", text_color=ORANGE)
+            else:
+                label = (T("sm_installed") if ok else T("sm_none")) + ((" · " + T("sm_inuse")) if m == using and ok else "")
+                self._set(st, text=label, text_color=GREEN if ok else SUB)
+            busy = (not ok and self.app._stt_pct is not None) or (ok and m == using and running)
+            self._set(btn, state="disabled" if busy else "normal", **self._action_style(ok, busy))
 
     def _stt_delete(self, m):
         if ask(self, T("sm_delete"), T("sm_delete_body").format(name=m, mb=MODEL_SIZES_MB[m]), T("delete_yes"), T("dl_no")):
             delete_stt(m)
             self._refresh_stt()
 
-    # -- 오프라인 번역 모델 카드 ------------------------------------------
     def _build_mt_card(self):
         card = self.card()
         self._mt_card = card
-        ctk.CTkLabel(card, text=T("mt_card_title"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
-        self.mt_lbl = ctk.CTkLabel(card, text="", font=f(13), text_color=TEXT, anchor="w", justify="left", wraplength=530)
-        self.mt_lbl.pack(fill="x", padx=14)
-        row = ctk.CTkFrame(card, fg_color="transparent")
-        row.pack(fill="x", padx=14, pady=(8, 12))
-        self.mt_get = pill_button(row, "⬇ " + T("mt_get"), lambda: self.app.ensure_mt(force=True), height=32)
-        self.mt_get.pack(side="left", padx=(0, 8))
-        self.mt_rm = soft_button(row, T("mt_remove"), self._mt_remove, height=32)
-        self.mt_rm.pack(side="left")
+        self.mt_var = ctk.StringVar(value=self.cfg["mt_quality"])
+        self.mt_rows = {}
+        for tier in ("standard", "high"):
+            st, btn = self._model_row(card, T("mqs_" + tier), self.mt_var, tier, lambda t=tier: self._pick_mt(t),
+                                      (lambda t=tier: self._mt_action(t)))
+            self.mt_rows[tier] = (st, btn)
+        ctk.CTkLabel(card, text=T("mt_scope_note"), font=f(11), text_color=SUB, anchor="w", justify="left",
+                     wraplength=520).pack(fill="x", padx=16, pady=(4, 12))
+        self._refresh_mt()
+
+    def _pick_mt(self, tier):
+        self.app.set_cfg("mt_quality", tier)
+        self._refresh_mt()
+        self.app.after(80, self.app.ensure_mt)
+
+    def _mt_action(self, tier):
+        if mt_cached(tier):
+            self._mt_remove(tier)
+        else:
+            self.mt_var.set(tier)
+            self.app.set_cfg("mt_quality", tier)
+            self.app.ensure_mt(force=True)
         self._refresh_mt()
 
     def _refresh_mt(self):
-        tier = mt_tier(self.cfg)
-        ok = mt_cached(tier)
-        self.mt_lbl.configure(text=T("mt_status_ok") if ok else T("mt_status_none").format(mb=MT_MODELS[tier]["size_mb"]),
-                              text_color=GREEN if ok else SUB)
-        self.mt_get.configure(state="normal" if not ok and self.app._mt_pct is None else "disabled")
-        self.mt_rm.configure(state="normal" if ok else "disabled")
+        if self.mt_var.get() != self.cfg["mt_quality"]:
+            self.mt_var.set(self.cfg["mt_quality"])
+        for tier, (st, btn) in self.mt_rows.items():
+            ok = mt_cached(tier)
+            if tier == self.app._mt_dl and self.app._mt_pct is not None:
+                self._set(st, text=f"⏳ {T('dl_mt_progress')} {self.app._mt_pct}%", text_color=ORANGE)
+            else:
+                self._set(st, text=T("sm_installed") if ok else T("sm_none"), text_color=GREEN if ok else SUB)
+            busy = not ok and self.app._mt_pct is not None
+            self._set(btn, state="disabled" if busy else "normal", **self._action_style(ok, busy))
+        if hasattr(self, "local_lbl"):
+            self._refresh_local_lbl()
 
-    def _mt_remove(self):
+    def _mt_remove(self, tier=None):
+        tier = tier or mt_tier(self.cfg)
         release_mt()
-        shutil.rmtree(mt_dir(mt_tier(self.cfg)), ignore_errors=True)
-        self._refresh_mt()
+        shutil.rmtree(mt_dir(tier), ignore_errors=True)
 
     def _save_vocab(self, _=None):
         self.cfg["vocab"] = self.vocab.get().strip()[:300]

@@ -7,6 +7,19 @@
 ### Added
 - **Pause / resume hotkey** (Settings → General, off by default): a global shortcut that works while VRChat is in front, with a short beep so you know the state. It tells you if another program already uses the key.
 - Your X (Twitter) link on the *About me* page.
+- Version number shown on the main screen.
+- The app frees the speech and translation models from memory after 5 idle minutes (starting again takes about 2 s).
+
+### Fixed
+- **Very short calls such as "야", "네", "Hey" were not recognized at all.** Speech shorter than 0.35 s was dropped and Whisper's own speech check discarded one-syllable words. Short speech is now accepted (0.15 s), the check and filters are relaxed for it only, and a hint of common call words is given to one-word clips. In a synthetic test 11 of 27 short calls were recognized before and 27 of 27 now, with no false triggers on fan, hum, keyboard or silence.
+- After pressing **Clear**, new messages did not appear again (the chat view stayed scrolled to a stale position).
+- The model download buttons no longer flicker, and the model being downloaded shows its progress next to its name.
+
+### Changed
+- **More accurate speech recognition by default**: the search width is now chosen from your CPU (5 on 8+ cores, 3 on 4+, 1 otherwise). In a noisy synthetic test the error rate fell from 26.9% to 18.2% with almost no extra time on an 8-core PC.
+- **Settings reorganized**: new *Models* page with one row per model (choose, size, status, download/delete in a single button) for both speech and offline translation; *Microphone* page with auto-tune inside the sensitivity card; readable left menu with icons; API key box only for services that need a key.
+- Wider main panel so "English" fits on the translate-to buttons.
+- **Google Cloud Translation was removed.** Only DeepL and Gemini need a key now; offline and MyMemory need none. If you had chosen Google Cloud the app switches back to offline.
 
 ## v1.0.0-beta.2 — New name, installer, one-click update
 
