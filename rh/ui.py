@@ -34,7 +34,8 @@ TEXT, SUB = ("#26224A", "#ECE9FF"), ("#7B7799", "#9593B5")
 GREEN, ORANGE, RED = ("#1FA971", "#6EE7A8"), ("#D98A1F", "#FFC46B"), ("#D93A5C", "#FF8AA0")
 MAX_BUBBLES = 60
 RESTART_KEYS = {"mic", "model", "device_type", "vrc_mute_sync", "osc_ip", "osc_port", "osc_in_port"}
-KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "google": "https://cloud.google.com/translate/docs/setup"}
+KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "google": "https://cloud.google.com/translate/docs/setup",
+            "gemini": "https://aistudio.google.com/apikey"}
 
 
 def _version_key(v):
@@ -707,14 +708,16 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _page_translate(self):
         self.section(T("sec_translate"))
-        self.option("translator", T("tr_provider"),
+        prov = self.option("translator", T("tr_provider"),
                     [("local", T("tp_local")), ("mymemory", T("tp_mymemory")), ("deepl", T("tp_deepl")),
-                     ("google", T("tp_google"))], cb=lambda v: self._refresh_key_ui())
-        self.option("mt_quality", T("mt_quality"), [("standard", T("mq_standard")), ("high", T("mq_high"))],
-                    cb=lambda v: (self._refresh_mt(), self.app.after(80, self.app.ensure_mt)))
+                     ("google", T("tp_google")), ("gemini", T("tp_gemini"))], cb=lambda v: self._refresh_key_ui())
+        qual = self.option("mt_quality", T("mt_quality"), [("standard", T("mq_standard")), ("high", T("mq_high"))],
+                           cb=lambda v: (self._refresh_mt(), self.app.after(80, self.app.ensure_mt)))
+        self._prov_card, self._qual_card = prov.master, qual.master
         self._build_mt_card()
         card = self.card()
         ctk.CTkLabel(card, text=T("tr_key"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
+        self._key_card = card
         self.key_entry = ctk.CTkEntry(card, show="•", height=36, corner_radius=18, font=f(13), fg_color=FIELD,
                                       border_width=0)
         self.key_entry.pack(fill="x", padx=14)
@@ -731,6 +734,17 @@ class SettingsWindow(ctk.CTkToplevel):
         self.test_lbl.pack(fill="x", padx=16, pady=(2, 0))
         ctk.CTkLabel(card, text=T("tr_key_note"), font=f(11), text_color=SUB, anchor="w", justify="left",
                      wraplength=530).pack(fill="x", padx=16, pady=(4, 12))
+        # Gemini 전용: 모델 이름 + 무료 사용량의 데이터 사용 안내 (Gemini 를 골랐을 때만 보임)
+        self.gem_card = ctk.CTkFrame(self.body, fg_color=CARD, corner_radius=20)
+        ctk.CTkLabel(self.gem_card, text=T("tr_model"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
+        self.gem_entry = ctk.CTkEntry(self.gem_card, placeholder_text=T("tr_model_hint"), height=34, corner_radius=17,
+                                      font=f(13), fg_color=FIELD, border_width=0)
+        self.gem_entry.insert(0, self.cfg.get("gemini_model", ""))
+        self.gem_entry.pack(fill="x", padx=14)
+        self.gem_entry.bind("<Return>", self._save_gem_model)
+        self.gem_entry.bind("<FocusOut>", self._save_gem_model)
+        ctk.CTkLabel(self.gem_card, text="⚠ " + T("tr_gemini_note"), font=f(11), text_color=ORANGE, anchor="w", justify="left",
+                     wraplength=530).pack(fill="x", padx=16, pady=(8, 12))
         tip = ctk.CTkFrame(self.body, fg_color=FIELD, corner_radius=16)
         tip.pack(fill="x", padx=4, pady=6)
         ctk.CTkLabel(tip, text="💡 " + T("tr_tip"), font=f(12), text_color=TEXT, anchor="w", justify="left",
@@ -953,9 +967,23 @@ class SettingsWindow(ctk.CTkToplevel):
         self.key_entry.delete(0, "end")
         self.key_entry.configure(placeholder_text=T("tr_key_saved") if saved else T("tr_key_hint"),
                                  state="normal" if needs else "disabled")
+        # 선택한 서비스에 해당하는 카드만 보이게: 오프라인 -> 품질·모델 카드 / Gemini -> 모델 이름 + 데이터 사용 경고(맨 위)
+        if p == "local":
+            self._qual_card.pack(fill="x", padx=4, pady=5, after=self._prov_card)
+            self._mt_card.pack(fill="x", padx=4, pady=5, after=self._qual_card)
+        else:
+            self._qual_card.pack_forget()
+            self._mt_card.pack_forget()
+        if p == "gemini":
+            self.gem_card.pack(fill="x", padx=4, pady=5, after=self._prov_card)
+        else:
+            self.gem_card.pack_forget()
         self.get_key_btn.configure(state="normal" if needs else "disabled")
         self.rm_key_btn.configure(state="normal" if needs and saved else "disabled")
         self.test_lbl.configure(text="")
+
+    def _save_gem_model(self, _=None):
+        self.app.set_cfg("gemini_model", self.gem_entry.get().strip())
 
     def _save_key(self, _=None):
         text = self.key_entry.get().strip()
@@ -1034,6 +1062,7 @@ class SettingsWindow(ctk.CTkToplevel):
     # -- 오프라인 번역 모델 카드 ------------------------------------------
     def _build_mt_card(self):
         card = self.card()
+        self._mt_card = card
         ctk.CTkLabel(card, text=T("mt_card_title"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
         self.mt_lbl = ctk.CTkLabel(card, text="", font=f(13), text_color=TEXT, anchor="w", justify="left", wraplength=530)
         self.mt_lbl.pack(fill="x", padx=14)

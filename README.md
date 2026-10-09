@@ -13,7 +13,7 @@ Speech-to-text and translator for the VRChat chatbox. Speak into your microphone
 
 ## Features
 - Local speech recognition (faster-whisper): no usage limits, and your voice never leaves your PC.
-- Offline translation (M2M100): no limits, about 0.2 s per sentence, and sentences stay on your PC. You can also connect DeepL / Google Cloud with your own API key.
+- Offline translation (M2M100): no limits, about 0.2 s per sentence, and sentences stay on your PC. You can also connect DeepL / Google Cloud / Gemini with your own API key.
 - About 0.9 s from the end of your speech to the translated text (16-core PC, `small` model; varies by PC).
 - Protects VRChat terms and your names in translation; Korean particle fix.
 - Noise reduction, voice-band detection (ignores desk knocks), one-click microphone auto-tune.

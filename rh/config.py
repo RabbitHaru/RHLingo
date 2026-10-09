@@ -44,8 +44,9 @@ DEFAULTS = {
     "keep_model": True,       # 모델을 메모리에 유지 -> 시작 즉시
     "live_preview": None,     # None = PC 사양에 따라 자동 (말하는 중 미리보기)
     "vocab": "",              # 자주 쓰는 단어(이름 등) - 인식 도우미
-    "translator": "local",    # local(오프라인·한도 없음, 기본) / mymemory / deepl / google (사용자 본인의 공식 API 키)
+    "translator": "local",    # local(오프라인·한도 없음, 기본) / mymemory / deepl / google / gemini (사용자 본인의 공식 API 키)
     "mt_quality": "standard", # 오프라인 번역 품질: standard(가볍고 빠름) / high(더 자연스러움, 1.25GB)
+    "gemini_model": "",       # 비우면 기본(gemini-flash-lite-latest). 모델이 종료되면 자동으로 찾아서 기억
     "api_keys": {},           # {서비스: DPAPI로 암호화된 키}
     "consent_done": False,    # 첫 실행 개인정보 안내를 봤는지
     "consent_translate": False,  # 번역을 위해 인식된 문장을 Google 번역 서버로 전송하는 것에 동의

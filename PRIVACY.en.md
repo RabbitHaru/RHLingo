@@ -14,6 +14,7 @@ The app has no accounts, analytics, ads or remote logging.
        · MyMemory (no key, daily usage limit)
        · DeepL (your own API key)
        · Google Cloud Translation (your own API key)
+       · Google Gemini API (your own Google AI Studio key). Content sent with a free quota may be used by Google to improve its products and reviewed by humans, and Google asks you not to send personal or confidential information (paid use with billing enabled is treated differently)
      Servers may be abroad. If a request fails, the text is never silently sent to another service.
    - Purpose: translation. The developer stores nothing; each service has its own privacy policy.
    - If you don't agree, the app only transcribes. You can withdraw any time in Settings → Privacy.
