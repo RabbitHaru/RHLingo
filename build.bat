@@ -6,7 +6,7 @@ if not exist "%PY%" set PY=python
 "%PY%" -m pip install pyinstaller
 "%PY%" -m PyInstaller --noconfirm --clean --windowed --name HaruMimi ^
   --add-data "CHANGELOG.md;." ^
-  --add-data "PRIVACY.ko.md;." --add-data "PRIVACY.en.md;." --add-data "PRIVACY.ja.md;." ^
+  --add-data "PRIVACY.ko.md;." --add-data "PRIVACY.en.md;." --add-data "PRIVACY.ja.md;." --add-data "THIRD_PARTY_NOTICES.txt;." ^
   --collect-all customtkinter ^
   --collect-all faster_whisper ^
   --collect-all ctranslate2 ^

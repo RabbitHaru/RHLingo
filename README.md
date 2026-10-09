@@ -27,3 +27,12 @@ python HaruMimi.py
 ```
 exe 빌드는 `build.bat`. 설정과 모델은 `%APPDATA%\RabbitHaru` 에 저장됩니다.
 업데이트 내역은 [CHANGELOG.md](CHANGELOG.md) 를 참고하세요.
+
+## 고지 (Notices)
+- 이 프로젝트는 VRChat Inc., OpenAI, Google LLC와 제휴·후원·보증 관계가 없는 개인 프로젝트입니다.
+  "VRChat"은 VRChat Inc.의, "Google"/"Google 번역"은 Google LLC의 상표입니다.
+- 번역은 Google 번역 웹 서비스를 비공식적으로 이용하므로, 해당 서비스의 정책·구조가 바뀌면 예고 없이 동작하지 않거나
+  제한될 수 있습니다. 번역·인식 결과의 정확성은 보증하지 않으며, VRChat 채팅박스에 보낸 내용의 책임은 사용자에게 있습니다.
+- 마이크에 다른 사람의 목소리가 들어올 수 있는 환경에서는 상대방의 동의와 관련 법규(통신비밀보호법 등)에 유의하세요.
+- 사용한 오픈소스와 라이선스는 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) 에 있습니다.
+- 소프트웨어는 "있는 그대로" 제공되며, 사용으로 인한 어떤 손해에도 책임을 지지 않습니다.
