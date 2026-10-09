@@ -2,7 +2,7 @@
 
 🇰🇷 한국어: [CHANGELOG.ko.md](CHANGELOG.ko.md)
 
-## Unreleased
+## v1.0.0-beta.2 — New name, installer, one-click update
 
 ### Added
 - Google **Gemini** as an optional translation service (your own Google AI Studio key, official Gemini API). The key goes in a header, not the URL. The model name defaults to an always-latest alias and can be changed in Settings → Translation; if the model is retired the app finds a current one automatically. Settings and the privacy notice explain that content sent with a free quota may be used by Google to improve its products and reviewed by humans.

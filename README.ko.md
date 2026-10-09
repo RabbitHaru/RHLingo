@@ -2,13 +2,14 @@
 
 🇺🇸 English: [README.md](README.md)
 
-> ⚠️ **베타** (v1.0.0-beta.1): 기본 기능은 확인했지만 실제 사용 후기를 보내 주시면 큰 도움이 돼요. [이슈 남기기](https://github.com/RabbitHaru/RHLingo/issues)
+> ⚠️ **베타** (v1.0.0-beta.2): 기본 기능은 확인했지만 실제 사용 후기를 보내 주시면 큰 도움이 돼요. [이슈 남기기](https://github.com/RabbitHaru/RHLingo/issues)
 
 VRChat 채팅박스용 음성 인식(STT) 번역기예요. 마이크로 말하면 인식 → (번역) → VRChat 채팅박스(OSC)로 자동 전송해요. 한국어 / 日本語 / English. **정확성 · 신속성 · 가벼움**을 최우선으로 만들었어요.
 
 ## 사용법
+0. [Releases](https://github.com/RabbitHaru/RHLingo/releases)에서 **`RHLingo-Setup-…exe`**(추천: 설치 마법사, 바로가기, 한 번에 업데이트) 또는 **zip**(설치 없이 쓰는 버전)을 받아요. 코드 서명이 없어서 Windows SmartScreen 경고가 뜰 수 있는데, 작은 오픈소스 프로젝트에서는 정상이에요.
 1. VRChat 액션 메뉴 → Options → OSC → **Enabled** 켜기
-2. `RHLingo.exe` 실행 → 첫 실행 개인정보 안내 확인 → 번역할 언어(또는 "받아쓰기") 선택 → **시작**
+2. RH Lingo(`RHLingo.exe`) 실행 → 첫 실행 개인정보 안내 확인 → 번역할 언어(또는 "받아쓰기") 선택 → **시작**
 3. 처음에는 음성 모델을 받기 전에 크기를 알려드리고 허락을 물어봐요. 모델은 설정 → 음성 인식에서 직접 받고 지울 수도 있어요
 
 ## 특징

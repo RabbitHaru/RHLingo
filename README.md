@@ -2,13 +2,14 @@
 
 🇰🇷 한국어: [README.ko.md](README.ko.md)
 
-> ⚠️ **Beta** (v1.0.0-beta.1): the basics are verified, but real-world feedback is very welcome. [Open an issue](https://github.com/RabbitHaru/RHLingo/issues)
+> ⚠️ **Beta** (v1.0.0-beta.2): the basics are verified, but real-world feedback is very welcome. [Open an issue](https://github.com/RabbitHaru/RHLingo/issues)
 
 Speech-to-text and translator for the VRChat chatbox. Speak into your microphone → it recognizes your speech → (translates) → sends it to your VRChat chatbox via OSC. Korean / Japanese / English. Built for **accuracy, speed and a light footprint**.
 
 ## Quick start
+0. Download from [Releases](https://github.com/RabbitHaru/RHLingo/releases): **`RHLingo-Setup-…exe`** (recommended: setup wizard, shortcuts, one-click updates) or the **zip** (portable, no install). Windows SmartScreen may warn because the app is not code-signed; that is expected for a small open-source project.
 1. In VRChat: Action Menu → Options → OSC → **Enabled**.
-2. Run `RHLingo.exe`, read the first-run privacy notice, pick a language to translate to (or "Transcribe only"), then press **Start**.
+2. Run RH Lingo (`RHLingo.exe`), read the first-run privacy notice, pick a language to translate to (or "Transcribe only"), then press **Start**.
 3. The first time, the app asks before downloading a speech model (it shows the size). You can also manage models in Settings → Speech recognition.
 
 ## Features
