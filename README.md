@@ -2,6 +2,8 @@
 
 🇰🇷 한국어: [README.ko.md](README.ko.md)
 
+> ⚠️ **Beta** (v1.0.0-beta.1): the basics are verified, but real-world feedback is very welcome. [Open an issue](https://github.com/RabbitHaru/HaruMimi/issues)
+
 Speech-to-text and translator for the VRChat chatbox. Speak into your microphone → it recognizes your speech → (translates) → sends it to your VRChat chatbox via OSC. Korean / Japanese / English. Built for **accuracy, speed and a light footprint**.
 
 ## Quick start
@@ -17,6 +19,7 @@ Speech-to-text and translator for the VRChat chatbox. Speak into your microphone
 - Noise reduction, voice-band detection (ignores desk knocks), one-click microphone auto-tune.
 - Live preview while you speak, transcribe-only mode, VRChat mute sync, type-to-translate.
 - Light / dark theme, UI in Korean / Japanese / English.
+- Runs on the CPU by default; GPU acceleration needs the NVIDIA CUDA libraries (not bundled), otherwise the app falls back to the CPU automatically.
 
 ## Privacy
 The developer collects no personal data. Online translation services and update checks are used **only with your consent**, and every download **asks first**. Details: [English](PRIVACY.en.md) · [한국어](PRIVACY.ko.md) · [日本語](PRIVACY.ja.md)

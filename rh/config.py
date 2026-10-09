@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 APP_NAME = "HaruMimi"  # 앱 이름은 여기와 i18n.py 의 title/tagline 에서만 바꾸면 됩니다
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.0-beta.1"
 
 DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "RabbitHaru"
 CONFIG_PATH = DATA_DIR / "config.json"
@@ -40,7 +40,7 @@ DEFAULTS = {
     "osc_ip": "127.0.0.1",
     "osc_port": 9000,         # VRChat 입력 포트
     "osc_in_port": 9001,      # VRChat 출력 포트 (뮤트 감지용)
-    "noise_reduction": "low", # off / low / high (소음 제거)
+    "noise_reduction": "off",  # off(추천) / low / high (측정 결과 켜면 인식률이 떨어지는 경우가 많음)
     "keep_model": True,       # 모델을 메모리에 유지 -> 시작 즉시
     "live_preview": None,     # None = PC 사양에 따라 자동 (말하는 중 미리보기)
     "vocab": "",              # 자주 쓰는 단어(이름 등) - 인식 도우미

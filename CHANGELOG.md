@@ -2,7 +2,9 @@
 
 🇰🇷 한국어: [CHANGELOG.ko.md](CHANGELOG.ko.md)
 
-## v1.0.0 — First release
+## v1.0.0-beta.1 — First beta
+
+> Beta: the basics are verified with synthetic speech and noise tests. Real-world feedback is very welcome (see the Feedback tab or open an issue).
 
 ### Highlights
 - Speech-to-text and translation for the VRChat chatbox (via OSC): Korean / Japanese / English.
@@ -40,3 +42,15 @@
 - Settings → Privacy: withdraw consent, delete all local data, read the privacy notice.
 - Settings are stored in `%APPDATA%\RabbitHaru`.
 - Third-party licenses are listed in `THIRD_PARTY_NOTICES.txt`.
+
+### Fixes in this beta
+- Fixed: the conversation list could not be scrolled, and the mouse wheel did nothing over Settings sliders. Scrolling is now twice as fast, and sliders no longer change when you scroll.
+- Noise reduction is now **Off by default**. Our tests showed that filtering audio before Whisper lowered accuracy in most conditions (keyboard, background voices, quiet mics). "Light" and "Strong" remain as options and are marked as possibly lowering accuracy.
+- Input sizing now adapts to your PC: it records the actual recognition time per input size and avoids slow ones, and uses 6 CPU threads so latency stays steadier while VRChat is running.
+- Fixed: after stopping, the VRChat mute-sync port could stay open, so a restart might disable mute sync.
+- Verified the Auto / GPU / CPU choice: without the NVIDIA CUDA libraries the app falls back to the CPU safely, and switching back and forth no longer risks a hang.
+
+### Known limitations
+- GPU acceleration needs the NVIDIA CUDA libraries (cuBLAS / cuDNN), which are not bundled. Without them the app runs on the CPU.
+- Translation quality of the offline model is limited (DeepL with your own key is more accurate).
+- The exe is not code-signed, so Windows SmartScreen may warn you: choose "More info" → "Run anyway".

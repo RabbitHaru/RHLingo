@@ -43,6 +43,8 @@ HALLUCINATIONS = (
     "thanks for watching", "thank you for watching", "subtitles by", "please subscribe",
 )
 
+PRE_CHUNKS = 6  # 말이 시작되기 직전 보존할 조각 수 (1조각 = 0.05초)
+STT_BEAM = 1  # Whisper 탐색 폭 (클수록 정확해지지만 느려짐)
 NR_ALPHA = {"off": 0.0, "low": 1.0, "high": 2.0}  # 노이즈 제거 강도
 
 
@@ -152,31 +154,55 @@ def dedupe_sentences(text):
     return " ".join(out)
 
 
-def transcribe_adaptive(model, audio, lang, hotwords=None):
-    """발화 길이에 맞는 입력 길이로 인식. 반복 오류(압축률이 높은 결과)가 나오면 30초 방식으로 다시 시도."""
+CTX_BUCKETS = (700, 1000, 1500, 2000, 3000)  # 입력 길이 후보(프레임, 100프레임=1초). 크기에 따라 속도가 들쑥날쑥해서 종류를 적게 유지
+
+
+def pick_ctx_frames(model, needed):
+    """필요한 프레임 수를 덮는 후보 중, 이 PC에서 실제로 가장 빨랐던 것. 기록이 없으면 '작을수록 빠르다'고 가정."""
+    ema = model.__dict__.setdefault("_ctx_ema", {})
+    fits = [b for b in CTX_BUCKETS if b >= needed] or [CTX_BUCKETS[-1]]
+    return min(fits, key=lambda b: ema.get(b, b * 0.3))
+
+
+def record_ctx_cost(model, frames, ms):
+    """실제 인식 시간을 기록(지수 이동 평균). 느린 크기는 자동으로 피하게 되고, 안 쓰는 크기의 기록은 서서히 잊어서
+    일시적인 CPU 혼잡 때문에 한 번 느렸던 크기가 영영 제외되는 일이 없게 함."""
+    ema = model.__dict__.setdefault("_ctx_ema", {})
+    ema[frames] = ms if frames not in ema else 0.7 * ema[frames] + 0.3 * ms
+    for b in list(ema):
+        if b != frames:
+            ema[b] = 0.95 * ema[b] + 0.05 * (b * 0.3)
+
+
+def _run_ctx(model, audio, lang, hotwords, frames, vad=True):
+    """입력 길이(프레임)를 지정해서 인식."""
     _install_pad()
     fe = model.feature_extractor
     saved = (fe.n_samples, fe.nb_max_frames)
+    _CTX.frames = frames
+    fe.nb_max_frames, fe.n_samples = frames, frames * fe.hop_length
+    try:
+        segs, info = model.transcribe(audio, language=lang, beam_size=STT_BEAM, vad_filter=vad,
+                                      condition_on_previous_text=False, temperature=0.0,
+                                      without_timestamps=True, hotwords=hotwords)
+        return list(segs), info
+    finally:
+        _CTX.frames = 3000
+        fe.n_samples, fe.nb_max_frames = saved
 
-    def run(frames):
-        _CTX.frames = frames
-        fe.nb_max_frames, fe.n_samples = frames, frames * fe.hop_length
-        try:
-            segs, info = model.transcribe(audio, language=lang, beam_size=1, vad_filter=True,
-                                          condition_on_previous_text=False, temperature=0.0,
-                                          without_timestamps=True, hotwords=hotwords)
-            return list(segs), info
-        finally:
-            _CTX.frames = 3000
-            fe.n_samples, fe.nb_max_frames = saved
 
+def transcribe_adaptive(model, audio, lang, hotwords=None):
+    """발화 길이에 맞는 입력 길이로 인식. 반복 오류(압축률이 높은 결과)가 나오면 30초 방식으로 다시 시도."""
     if lang is None:  # 자동 언어 감지는 30초 전체를 써야 정확
-        return run(3000)
-    frames = min(3000, max(600, int(math.ceil((len(audio) / SR + 1.0) * 100 / 50)) * 50))
-    segs, info = run(frames)
+        return _run_ctx(model, audio, lang, hotwords, 3000)
+    needed = int(math.ceil((len(audio) / SR + 1.0) * 100 / 50)) * 50  # 발화 길이 + 1초 여유
+    frames = pick_ctx_frames(model, needed)
+    t0 = time.time()
+    segs, info = _run_ctx(model, audio, lang, hotwords, frames)
+    record_ctx_cost(model, frames, (time.time() - t0) * 1000)
     if frames < 3000 and segs and (max(x.compression_ratio for x in segs) > 2.4
                                    or has_repeat("".join(x.text for x in segs))):
-        segs, info = run(3000)  # 반복 오류 -> 30초 방식으로 다시
+        segs, info = _run_ctx(model, audio, lang, hotwords, 3000)  # 반복 오류 -> 30초 방식으로 다시
     return segs, info
 
 
@@ -250,7 +276,7 @@ def get_model(cfg, progress=None):
             for device, compute in tries:
                 try:
                     m = WhisperModel(name, device=device, compute_type=compute, download_root=str(MODEL_DIR),
-                                     local_files_only=cached, cpu_threads=min(8, os.cpu_count() or 4))
+                                     local_files_only=cached, cpu_threads=min(6, os.cpu_count() or 4))
                     # 워밍업: 첫 인식이 느려지지 않게 미리 한 번 돌려둠 (GPU 오류도 여기서 걸러짐)
                     list(m.transcribe(np.zeros(SR, dtype=np.float32), language="en")[0])
                     _MODEL.update(key=key, model=m, device=device)
@@ -825,7 +851,8 @@ class Engine:
         stream = None
         try:
             self.model, self.device = get_model(self.cfg, lambda p: setattr(self, "dl_pct", p))
-            self.events.put(("info", "info_gpu" if self.device == "cuda" else "info_cpu"))
+            self.events.put(("info", "info_gpu" if self.device == "cuda" else
+                             "info_cpu_sel" if self.cfg["device_type"] == "cpu" else "info_cpu"))
             threading.Thread(target=self._worker, daemon=True).start()
             threading.Thread(target=preload_mt, args=(self.cfg,), daemon=True).start()
             self._start_mute_listener()
@@ -846,7 +873,12 @@ class Engine:
                 except Exception:
                     pass
             if self._osc_server is not None:
-                threading.Thread(target=self._osc_server.shutdown, daemon=True).start()
+                try:
+                    self._osc_server.shutdown()      # 수신 루프 종료 (최대 0.1초 대기)
+                    self._osc_server.server_close()  # 포트 해제: 재시작 때 '이미 사용 중'이 되지 않도록
+                except Exception as e:
+                    log_error(f"osc close: {type(e).__name__}")
+                self._osc_server = None
             self.model = None
             if not self.cfg.get("keep_model", True):
                 release_model()
@@ -888,7 +920,7 @@ class Engine:
             d = Dispatcher()
             d.map("/avatar/parameters/MuteSelf", lambda addr, *a: setattr(self, "vrc_muted", bool(a and a[0])))
             self._osc_server = ThreadingOSCUDPServer((self.cfg["osc_ip"], int(self.cfg["osc_in_port"])), d)
-            threading.Thread(target=self._osc_server.serve_forever, daemon=True).start()
+            threading.Thread(target=self._osc_server.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True).start()
         except OSError:
             self._osc_server = None
             self.events.put(("info", "info_osc_busy"))
@@ -900,7 +932,7 @@ class Engine:
 
     def _capture_loop(self):
         c = self.cfg
-        pre = collections.deque(maxlen=6)  # 말 시작 직전 0.3초 (첫 음절 잘림 방지)
+        pre = collections.deque(maxlen=PRE_CHUNKS)  # 말 시작 직전 구간 (첫 음절 잘림 방지)
         buf, silent, voiced, total, last_partial = [], 0.0, 0.0, 0.0, 0.0
         above = 0  # 연속으로 기준을 넘은 조각 수 (순간적인 '탁' 소리 무시용)
         while self.running:
@@ -974,7 +1006,8 @@ class Engine:
 
     def _transcribe(self, audio):
         c = self.cfg
-        audio = denoise(audio, self.noise_mag, NR_ALPHA.get(c.get("noise_reduction", "low"), 1.0))
+        # 측정 결과 Whisper 앞단의 소음 제거는 인식 오류를 줄이지 못함(오히려 늘림) -> 기본값은 끔
+        audio = denoise(audio, self.noise_mag, NR_ALPHA.get(c.get("noise_reduction", "off"), 0.0))
         peak = float(np.max(np.abs(audio)))
         if 0.01 < peak < 0.5:  # 작은 마이크 소리를 키워 인식률 향상
             audio = audio * (0.7 / peak)

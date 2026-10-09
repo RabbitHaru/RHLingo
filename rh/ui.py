@@ -8,6 +8,7 @@ import shutil
 import sys
 import threading
 import time
+import tkinter as tk
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -36,6 +37,13 @@ RESTART_KEYS = {"mic", "model", "device_type", "vrc_mute_sync", "osc_ip", "osc_p
 KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "google": "https://cloud.google.com/translate/docs/setup"}
 
 
+def _version_key(v):
+    """'1.0.0-beta.1' 같은 표기도 비교 가능하게. 번호가 같으면 정식(1)이 베타(0)보다 새 버전."""
+    import re
+    nums = tuple(int(x) for x in re.findall(r"\d+", v.split("-")[0])[:3])
+    return nums + (0,) * (3 - len(nums)) + (0 if "-" in v else 1,)
+
+
 def resource_path(name):
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     return base / name
@@ -43,6 +51,29 @@ def resource_path(name):
 
 def f(size=13, bold=False):
     return ctk.CTkFont(family=FONT, size=size, weight="bold" if bold else "normal")
+
+
+class ScrollFrame(ctk.CTkScrollableFrame):
+    """CTkScrollableFrame 개선판: 슬라이더 위에서도 휠로 스크롤되고, 휠 한 칸당 이동량이 기본(20px)의 2배."""
+
+    def _inside(self, widget):
+        while widget is not None:
+            if widget is self._parent_canvas:
+                return True
+            widget = getattr(widget, "master", None)
+        return False
+
+    def _check_if_valid_scroll(self, widget):
+        if isinstance(widget, ctk.CTkSlider):  # 기본 구현은 슬라이더 위에서 스크롤을 막음
+            return self._inside(widget)
+        return super()._check_if_valid_scroll(widget)
+
+    def _mouse_wheel_all(self, event):
+        if sys.platform.startswith("win") and not self._shift_pressed:
+            if self._check_if_valid_scroll(event.widget) and self._parent_canvas.yview() != (0.0, 1.0):
+                self._parent_canvas.yview("scroll", -int(event.delta / 3), "units")
+            return
+        super()._mouse_wheel_all(event)
 
 
 def pill_button(parent, text, cmd, color=PURPLE, hover=PURPLE_H, text_color="#FFFFFF", height=36, **kw):
@@ -271,9 +302,9 @@ class MainWindow(ctk.CTk):
         self.partial_lbl = ctk.CTkLabel(main, text="", font=f(12), text_color=SUB, wraplength=560, justify="left", anchor="w")
         self.partial_lbl.pack(side="bottom", fill="x", padx=14, pady=(8, 0))
 
-        self.hist = ctk.CTkScrollableFrame(main, fg_color=CARD, corner_radius=26)
+        self.hist = ScrollFrame(main, fg_color=CARD, corner_radius=26)
         self.hist.pack(fill="both", expand=True)
-        self.hist.bind("<Configure>", self._on_hist_resize)
+        self.hist.bind("<Configure>", self._on_hist_resize, add="+")  # 내장 스크롤 영역 갱신 이벤트를 덮어쓰면 안 됨
         self.empty = ctk.CTkLabel(self.hist, text=T("empty"), font=f(14), text_color=SUB, justify="center")
         self.empty.pack(pady=80)
 
@@ -526,7 +557,7 @@ class MainWindow(ctk.CTk):
             req = urllib.request.Request(url, headers={"User-Agent": "HaruMimi"})
             data = json.loads(urllib.request.urlopen(req, timeout=8).read().decode("utf-8"))
             tag = data.get("tag_name", "").lstrip("v")
-            if tag and tuple(map(int, tag.split("."))) > tuple(map(int, APP_VERSION.split("."))):
+            if tag and _version_key(tag) > _version_key(APP_VERSION):
                 self.events.put(("update", tag, data.get("html_url", "")))
         except Exception:
             pass
@@ -619,7 +650,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.content = ctk.CTkFrame(self, fg_color="transparent")
         self.content.pack(side="left", fill="both", expand=True, padx=(0, 14), pady=14)
         for key, _ in self.PAGES:
-            self.body = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
+            self.body = ScrollFrame(self.content, fg_color="transparent")
             self.pages[key] = self.body
             getattr(self, f"_page_{key}")()
         self.show(page)
@@ -654,6 +685,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self.cal_lbl.pack(fill="x", padx=16, pady=(0, 12))
         self.slider("silence_sec", T("silence"), 0.2, 1.5, 26, fmt="{:.1f}s")
         self.option("noise_reduction", T("noise"), [("off", T("nr_off")), ("low", T("nr_low")), ("high", T("nr_high"))])
+        ctk.CTkLabel(self.body, text=T("nr_hint"), font=f(11), text_color=SUB, anchor="w", justify="left",
+                     wraplength=530).pack(fill="x", padx=14, pady=(0, 6))
         self.option("model", T("model"), [(m, T("m_" + m)) for m in
                                           ("auto", "tiny", "base", "small", "medium", "large-v3-turbo")],
                     cb=lambda v: self.app.engine is None and self.app.after(80, self.app.ensure_stt_model))
@@ -798,6 +831,7 @@ class SettingsWindow(ctk.CTkToplevel):
                           button_color=PURPLE, button_hover_color=PURPLE_H, fg_color=FIELD)
         s.set(self.cfg[key])
         s.pack(fill="x", padx=14, pady=(4, 12))
+        tk.Misc.unbind(s._canvas, "<MouseWheel>")  # 휠은 페이지 스크롤 전용 (값이 실수로 바뀌는 것 방지)
         self.sliders[key] = (s, on)
 
     # -- 마이크 레벨 미터 -------------------------------------------------
