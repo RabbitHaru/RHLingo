@@ -88,7 +88,7 @@ begin
   begin
     DataDir := ExpandConstant('{userappdata}\RabbitHaru');
     if DirExists(DataDir) then
-      if MsgBox(CustomMessage('DeleteUserData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      if SuppressibleMsgBox(CustomMessage('DeleteUserData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES then
         DelTree(DataDir, True, True, True);
   end;
 end;
