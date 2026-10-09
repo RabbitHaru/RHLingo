@@ -2,6 +2,12 @@
 
 🇰🇷 한국어: [CHANGELOG.ko.md](CHANGELOG.ko.md)
 
+## Unreleased
+
+### Added
+- **Pause / resume hotkey** (Settings → General, off by default): a global shortcut that works while VRChat is in front, with a short beep so you know the state. It tells you if another program already uses the key.
+- Your X (Twitter) link on the *About me* page.
+
 ## v1.0.0-beta.2 — New name, installer, one-click update
 
 ### Added

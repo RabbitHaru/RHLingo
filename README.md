@@ -18,7 +18,7 @@ Speech-to-text and translator for the VRChat chatbox. Speak into your microphone
 - About 0.9 s from the end of your speech to the translated text (16-core PC, `small` model; varies by PC).
 - Protects VRChat terms and your names in translation; Korean particle fix.
 - Noise reduction, voice-band detection (ignores desk knocks), one-click microphone auto-tune.
-- Live preview while you speak, transcribe-only mode, VRChat mute sync, type-to-translate.
+- Live preview while you speak, transcribe-only mode, VRChat mute sync, type-to-translate, and an optional global hotkey to pause/resume.
 - Light / dark theme, UI in Korean / Japanese / English.
 - Runs on the CPU by default; GPU acceleration needs the NVIDIA CUDA libraries (not bundled), otherwise the app falls back to the CPU automatically.
 

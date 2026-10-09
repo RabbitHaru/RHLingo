@@ -17,7 +17,7 @@ from pathlib import Path
 
 import customtkinter as ctk
 
-from . import i18n, links, secret, updater
+from . import hotkey, i18n, links, secret, updater
 from .config import APP_NAME, APP_VERSION, DATA_DIR, load_config, log_error, save_config
 from .engine import (MODEL_SIZES_MB, MT_MODELS, Engine, MicMonitor, Output, TranslateError, calibrate_sensitivity,
                      delete_stt, download_mt, download_stt,
@@ -201,6 +201,7 @@ class MainWindow(ctk.CTk):
         self._mt_pct = None  # 오프라인 번역 모델 다운로드 진행률
         self._stt_pct = None  # 음성 인식 모델 다운로드 진행률
         self.update_info = None
+        self.hotkey = hotkey.Hotkey(lambda: self.events.put(("hotkey",)))
         self.build()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(100, self._tick)
@@ -218,6 +219,7 @@ class MainWindow(ctk.CTk):
             if not first_run:  # 새 버전으로 바뀐 뒤 처음 켰을 때: 창을 띄우지 않고 대화창에 한 줄만
                 self.add_bubble(T("whats_new").format(v=APP_VERSION), kind="sys")
         self.check_update_if_allowed()
+        self.apply_hotkey()
         self._preload()
 
     def _preload(self):
@@ -464,6 +466,11 @@ class MainWindow(ctk.CTk):
             self._show_update()
             if ev[2]:
                 ev[2](T("up_found").format(v=ev[1]["version"]))
+        elif kind == "hotkey":
+            e = self.engine
+            if e is not None and e.running:
+                self.toggle_pause()
+                self._beep(e.paused)
         elif kind == "update_none":
             if ev[1]:
                 ev[1](T("up_latest"))
@@ -574,6 +581,25 @@ class MainWindow(ctk.CTk):
             self.engine.stop()
         else:
             self.start_engine()
+
+    def apply_hotkey(self):
+        """설정의 단축키를 등록 (이미 다른 프로그램이 쓰는 키면 알려줌). 성공 여부를 돌려줘요."""
+        name = self.cfg.get("hotkey", "off")
+        ok = self.hotkey.start(name)
+        if not ok:
+            self.add_bubble(T("hk_busy").format(k=hotkey.LABELS.get(name, name)), kind="err")
+        return ok
+
+    @staticmethod
+    def _beep(paused):
+        """화면을 안 보고 있어도 알 수 있게 짧은 소리 (일시정지: 낮은 음, 재개: 높은 음)."""
+        def run():
+            try:
+                import winsound
+                winsound.Beep(520 if paused else 880, 70)
+            except Exception:
+                pass
+        threading.Thread(target=run, daemon=True).start()
 
     def toggle_pause(self):
         if self.engine is not None:
@@ -701,6 +727,7 @@ class MainWindow(ctk.CTk):
         os._exit(0)
 
     def on_close(self):
+        self.hotkey.stop()
         if self.engine is not None:
             self.engine.stop()
         self.destroy()
@@ -763,6 +790,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self.option("theme", T("theme"), [("system", T("theme_system")), ("light", T("theme_light")),
                                           ("dark", T("theme_dark"))], ui=True)
         self.switch("always_on_top", T("always_on_top"), ui=True)
+        self.option("hotkey", T("hotkey"), [("off", T("hk_off"))] + [(k, v) for k, v in hotkey.LABELS.items()],
+                    cb=lambda v: self.app.apply_hotkey())
 
     def _page_audio(self):
         self.section(T("sec_audio"))

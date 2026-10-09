@@ -43,6 +43,8 @@ DEFAULTS = {
     "noise_reduction": "off",  # off(추천) / low / high (측정 결과 켜면 인식률이 떨어지는 경우가 많음)
     "keep_model": True,       # 모델을 메모리에 유지 -> 시작 즉시
     "live_preview": None,     # None = PC 사양에 따라 자동 (말하는 중 미리보기)
+    "hotkey": "off",  # 일시정지/재개 전역 단축키 (off 또는 hotkey.HOTKEYS 의 키)
+    "hotkey": "off",  # 일시정지/재개 전역 단축키 (off 또는 hotkey.HOTKEYS 의 키)
     "vocab": "",              # 자주 쓰는 단어(이름 등) - 인식 도우미
     "translator": "local",    # local(오프라인·한도 없음, 기본) / mymemory / deepl / google / gemini (사용자 본인의 공식 API 키)
     "mt_quality": "standard", # 오프라인 번역 품질: standard(가볍고 빠름) / high(더 자연스러움, 1.25GB)
