@@ -7,7 +7,7 @@
   #define AppVersionNum "1.0.0.0"
 #endif
 #define AppPublisher "RabbitHaru"
-#define AppURL "https://github.com/RabbitHaru/HaruMimi"
+#define AppURL "https://github.com/RabbitHaru/RHLingo"
 #define AppExe "RHLingo.exe"
 
 [Setup]

@@ -11,6 +11,7 @@ import time
 import tkinter as tk
 import urllib.parse
 import urllib.request
+import warnings
 import webbrowser
 from pathlib import Path
 
@@ -38,6 +39,7 @@ KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "google": "https://cloud.g
             "gemini": "https://aistudio.google.com/apikey"}
 
 
+warnings.filterwarnings("ignore", message=".*not CTkImage.*")
 _version_key = updater.version_key
 
 
@@ -210,7 +212,11 @@ class MainWindow(ctk.CTk):
             self.wait_window(c)
             self.refresh_target()
         if self.cfg["last_seen_version"] != APP_VERSION:
-            self.open_info("tab_new")
+            first_run = not self.cfg["last_seen_version"]
+            self.cfg["last_seen_version"] = APP_VERSION
+            save_config(self.cfg)
+            if not first_run:  # 새 버전으로 바뀐 뒤 처음 켰을 때: 창을 띄우지 않고 대화창에 한 줄만
+                self.add_bubble(T("whats_new").format(v=APP_VERSION), kind="sys")
         self.check_update_if_allowed()
         self._preload()
 
@@ -233,7 +239,7 @@ class MainWindow(ctk.CTk):
         self.bubbles = []
         self._shown_state = None
         self._mpos = self._meter_on = None
-        self.title(f"{T('title')} · by RabbitHaru")
+        self.title(T("title"))
         self.columnconfigure(0, weight=0)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
@@ -243,15 +249,31 @@ class MainWindow(ctk.CTk):
         side.grid(row=0, column=0, sticky="ns", padx=(16, 8), pady=16)
         side.pack_propagate(False)
 
+        # 아래쪽부터 쌓는 것들 (pack side=bottom 은 먼저 넣은 게 가장 아래)
         bottom = ctk.CTkFrame(side, fg_color="transparent")
-        bottom.pack(side="bottom", fill="x", padx=20, pady=(0, 20))
-        for i, (label, cmd) in enumerate((("⚙ " + T("settings"), self.open_settings),
-                                          ("RH " + T("dev_menu"), lambda: self.open_info("tab_dev")),
-                                          ("♥ " + T("about"), lambda: self.open_info("tab_new")))):
-            b = soft_button(bottom, label, cmd, width=10)
-            b.configure(font=f(12, True))
-            b.pack(side="left", expand=True, fill="x", padx=(0 if i == 0 else 3, 0 if i == 2 else 3))
+        bottom.pack(side="bottom", fill="x", padx=20, pady=(0, 18))
+        for i, (label, cmd) in enumerate((("⚙  " + T("settings"), self.open_settings),
+                                          ("♥  " + T("about"), lambda: self.open_info("tab_new")))):
+            soft_button(bottom, label, cmd).pack(side="left", expand=True, fill="x", padx=(0 if i == 0 else 4, 0 if i == 1 else 4))
 
+        mic = ctk.CTkFrame(side, fg_color=FIELD, corner_radius=18)
+        mic.pack(side="bottom", fill="x", padx=22, pady=(0, 12))
+        head = ctk.CTkFrame(mic, fg_color="transparent")
+        head.pack(fill="x", padx=16, pady=(10, 4))
+        ctk.CTkLabel(head, text="🎤  " + T("level"), font=f(12), text_color=SUB).pack(side="left")
+        self.db_lbl = ctk.CTkLabel(head, text="", font=f(12, True), text_color=SUB)
+        self.db_lbl.pack(side="right")
+        mrow = ctk.CTkFrame(mic, fg_color="transparent")
+        mrow.pack(fill="x", padx=16, pady=(0, 12))
+        self.pause_btn = ctk.CTkButton(mrow, text=T("pause"), width=84, height=28, corner_radius=14, font=f(12, True),
+                                       fg_color=CARD, hover_color=FIELD_H, text_color=TEXT, command=self.toggle_pause)
+        self.pause_btn.pack(side="right", padx=(10, 0))
+        self.meter = ctk.CTkProgressBar(mrow, height=12, corner_radius=6, progress_color=PURPLE, fg_color=CARD)
+        self.meter.set(0)
+        self.meter.pack(side="left", fill="x", expand=True)
+        self.mmarker = ctk.CTkFrame(mrow, width=3, height=20, corner_radius=1, fg_color=PINK)
+
+        # 위쪽부터: 브랜드 → 언어 카드 → 시작 → 상태
         brand = ctk.CTkFrame(side, fg_color="transparent")
         brand.pack(fill="x", padx=24, pady=(22, 0))
         try:
@@ -260,51 +282,37 @@ class MainWindow(ctk.CTk):
         except Exception:
             pass
         ctk.CTkLabel(brand, text=T("title"), font=f(24, True), text_color=TEXT, anchor="w").pack(side="left")
-        ctk.CTkLabel(side, text=T("tagline"), font=f(11), text_color=SUB, anchor="w").pack(fill="x", padx=26)
+        ctk.CTkLabel(side, text=T("tagline"), font=f(11), text_color=SUB, anchor="w").pack(fill="x", padx=26, pady=(2, 0))
         self.update_lbl = ctk.CTkLabel(side, text="", font=f(11, True), text_color=PURPLE, cursor="hand2", anchor="w")
         self.update_lbl.pack(fill="x", padx=26)
         self.update_lbl.bind("<Button-1>", lambda e: self.start_update())
         self._show_update()
 
-        self.status = ctk.CTkLabel(side, text="", font=f(12, True), text_color=SUB, fg_color=FIELD,
-                                   corner_radius=14, height=30, anchor="w")
-        self.status.pack(fill="x", padx=22, pady=(14, 12))
-        self.btn = ctk.CTkButton(side, text=T("start"), height=54, corner_radius=27, font=f(17, True),
-                                 fg_color=PURPLE, hover_color=PURPLE_H, command=self.toggle)
-        self.btn.pack(fill="x", padx=22)
-
-        mic = ctk.CTkFrame(side, fg_color=FIELD, corner_radius=18)
-        mic.pack(fill="x", padx=22, pady=(16, 0))
-        head = ctk.CTkFrame(mic, fg_color="transparent")
-        head.pack(fill="x", padx=16, pady=(12, 6))
-        ctk.CTkLabel(head, text="🎤  " + T("level"), font=f(12), text_color=SUB).pack(side="left")
-        self.db_lbl = ctk.CTkLabel(head, text="", font=f(12, True), text_color=SUB)
-        self.db_lbl.pack(side="right")
-        self.meter = ctk.CTkProgressBar(mic, height=12, corner_radius=6, progress_color=PURPLE, fg_color=CARD)
-        self.meter.set(0)
-        self.meter.pack(fill="x", padx=16)
-        self.mmarker = ctk.CTkFrame(mic, width=3, height=20, corner_radius=1, fg_color=PINK)
-        self.pause_btn = ctk.CTkButton(mic, text=T("pause"), height=30, corner_radius=15, font=f(12, True),
-                                       fg_color=CARD, hover_color=FIELD_H, text_color=TEXT, command=self.toggle_pause)
-        self.pause_btn.pack(fill="x", padx=16, pady=(10, 14))
-
-        ctk.CTkLabel(side, text=T("speech_lang"), font=f(12), text_color=SUB, anchor="w").pack(fill="x", padx=26, pady=(16, 4))
+        langs = ctk.CTkFrame(side, fg_color=FIELD, corner_radius=20)
+        langs.pack(fill="x", padx=22, pady=(14, 0))
+        ctk.CTkLabel(langs, text=T("speech_lang"), font=f(12), text_color=SUB, anchor="w").pack(fill="x", padx=16, pady=(12, 4))
         items = [("auto", T("auto"))] + [(c, lang_label(c)) for c in LANGS]
         by_label = {l: c for c, l in items}
         self.src_menu = ctk.CTkOptionMenu(
-            side, values=[l for _, l in items], corner_radius=16, height=36, font=f(13), dropdown_font=f(13),
-            fg_color=FIELD, text_color=TEXT, button_color=PURPLE, button_hover_color=PURPLE_H,
+            langs, values=[l for _, l in items], corner_radius=16, height=36, font=f(13), dropdown_font=f(13),
+            fg_color=CARD, text_color=TEXT, button_color=PURPLE, button_hover_color=PURPLE_H,
             dynamic_resizing=False, command=lambda l: self.set_cfg("source", by_label[l]))
         self.src_menu.set(next(l for c, l in items if c == self.cfg["source"]))
-        self.src_menu.pack(fill="x", padx=22)
-
-        ctk.CTkLabel(side, text=T("translate_to"), font=f(12), text_color=SUB, anchor="w").pack(fill="x", padx=26, pady=(14, 4))
+        self.src_menu.pack(fill="x", padx=14)
+        ctk.CTkLabel(langs, text="⇣  " + T("translate_to"), font=f(12), text_color=SUB, anchor="w").pack(fill="x", padx=16, pady=(10, 4))
         self.target_btn = ctk.CTkSegmentedButton(
-            side, values=[T("stt_only")] + [NATIVE[c] for c in LANGS], command=self._on_target, height=36,
+            langs, values=[T("stt_only")] + [NATIVE[c] for c in LANGS], command=self._on_target, height=36,
             corner_radius=18, font=f(11, True), text_color=TEXT, selected_color=PURPLE, selected_hover_color=PURPLE_H,
-            unselected_color=FIELD, unselected_hover_color=FIELD_H)
-        self.target_btn.pack(fill="x", padx=22)
+            unselected_color=CARD, unselected_hover_color=FIELD_H)
+        self.target_btn.pack(fill="x", padx=14, pady=(0, 14))
         self.refresh_target()
+
+        self.btn = ctk.CTkButton(side, text=T("start"), height=54, corner_radius=27, font=f(17, True),
+                                 fg_color=PURPLE, hover_color=PURPLE_H, command=self.toggle)
+        self.btn.pack(fill="x", padx=22, pady=(14, 0))
+        self.status = ctk.CTkLabel(side, text="", font=f(12, True), text_color=SUB, fg_color="transparent",
+                                   height=28, anchor="center")
+        self.status.pack(fill="x", padx=22, pady=(6, 0))
 
         # ── 오른쪽: 대화 ──
         main = ctk.CTkFrame(self, fg_color="transparent")
@@ -417,7 +425,10 @@ class MainWindow(ctk.CTk):
         lvl = e.level if src is not None and state == "listening" else 0.0
         sens = self.cfg["sensitivity"]
         thr = src.nf.threshold(sens) if src is not None else threshold_for(sens)
-        self.meter.set(meter_value(lvl))
+        mv = meter_value(lvl)
+        if abs(mv - getattr(self, '_mv', -1)) > 0.004:  # 값이 거의 같으면 다시 그리지 않음 (CPU 절약)
+            self._mv = mv
+            self.meter.set(mv)
         db_text = f"{20 * math.log10(max(lvl, 1e-5)):.0f} dB" if state == "listening" else "— dB"
         if db_text != self.db_lbl.cget("text"):
             self.db_lbl.configure(text=db_text)
@@ -726,7 +737,7 @@ class SettingsWindow(ctk.CTkToplevel):
                               command=lambda k=key: self.show(k))
             b.pack(fill="x", padx=12, pady=2)
             self.nav_btns[key] = b
-        ctk.CTkLabel(nav, text=f"{APP_NAME} v{APP_VERSION}\nby RabbitHaru", font=f(11), text_color=SUB,
+        ctk.CTkLabel(nav, text=f"{APP_NAME}\nv{APP_VERSION}", font=f(11), text_color=SUB,
                      justify="left").pack(side="bottom", anchor="w", padx=20, pady=18)
 
         self.content = ctk.CTkFrame(self, fg_color="transparent")
@@ -1209,22 +1220,43 @@ class InfoWindow(ctk.CTkToplevel):
         self.minsize(760, 480)
         self.attributes("-topmost", app.cfg["always_on_top"])
         self.after(150, self.lift)
-        tabs = ctk.CTkTabview(self, corner_radius=22, fg_color=CARD, segmented_button_selected_color=PURPLE,
-                              segmented_button_selected_hover_color=PURPLE_H, segmented_button_unselected_color=FIELD,
-                              segmented_button_unselected_hover_color=FIELD_H, text_color=TEXT)
-        tabs.pack(fill="both", expand=True, padx=14, pady=14)
-        self.tabs = tabs
-        names = {k: T(k) for k in ("tab_dev", "tab_new", "tab_fb", "tab_support", "tab_privacy")}
-        for n in names.values():
-            tabs.add(n)
-        self._developer(tabs.tab(names["tab_dev"]))
-        self._text(tabs.tab(names["tab_new"]), f"{T('version')} {APP_VERSION}\n\n" + self._read(f"CHANGELOG.{i18n._lang}.md", "CHANGELOG.md"))
-        self._feedback(tabs.tab(names["tab_fb"]))
-        self._support(tabs.tab(names["tab_support"]))
-        self._text(tabs.tab(names["tab_privacy"]), self._read(f"PRIVACY.{i18n._lang}.md", "PRIVACY.en.md"))
-        tabs.set(names[tab])
+        nav = ctk.CTkFrame(self, fg_color=CARD, corner_radius=22, width=190)
+        nav.pack(side="left", fill="y", padx=(14, 8), pady=14)
+        nav.pack_propagate(False)
+        ctk.CTkLabel(nav, text="♥  " + T("about"), font=f(16, True), text_color=TEXT, anchor="w").pack(
+            fill="x", padx=20, pady=(22, 14))
+        ctk.CTkLabel(nav, text=f"{APP_NAME}\n{T('version')} {APP_VERSION}", font=f(11), text_color=SUB,
+                     justify="left").pack(side="bottom", anchor="w", padx=20, pady=18)
+        self.content = ctk.CTkFrame(self, fg_color=CARD, corner_radius=22)
+        self.content.pack(side="left", fill="both", expand=True, padx=(0, 14), pady=14)
+        builders = {
+            "tab_new": ("✨", lambda t: self._text(t, self._read(f"CHANGELOG.{i18n._lang}.md", "CHANGELOG.md"), md=True)),
+            "tab_fb": ("💬", self._feedback),
+            "tab_support": ("♥", self._support),
+            "tab_privacy": ("🔒", lambda t: self._text(t, self._read(f"PRIVACY.{i18n._lang}.md", "PRIVACY.en.md"))),
+            "tab_dev": ("🐰", self._developer),
+        }
+        self.nav_btns, self.pages, self.current = {}, {}, None
+        for key, (icon, build) in builders.items():
+            b = ctk.CTkButton(nav, text=f"{icon}  {T(key)}", height=40, corner_radius=20, font=f(13, True), anchor="w",
+                              fg_color="transparent", hover_color=FIELD_H, text_color=TEXT,
+                              command=lambda k=key: self.show(k))
+            b.pack(fill="x", padx=12, pady=2)
+            self.nav_btns[key] = b
+            page = ctk.CTkFrame(self.content, fg_color="transparent")
+            self.pages[key] = page
+            build(page)
+        self.show(tab)
         app.cfg["last_seen_version"] = APP_VERSION
         save_config(app.cfg)
+
+    def show(self, key):
+        for k, p in self.pages.items():
+            p.pack_forget()
+            self.nav_btns[k].configure(fg_color="transparent", text_color=TEXT)
+        self.pages[key].pack(fill="both", expand=True, padx=16, pady=16)
+        self.nav_btns[key].configure(fg_color=PURPLE, text_color="#FFFFFF", hover_color=PURPLE_H)
+        self.current = key
 
     @staticmethod
     def _read(name, fallback=None):
@@ -1236,11 +1268,42 @@ class InfoWindow(ctk.CTkToplevel):
                 pass
         return T("no_changelog")
 
-    def _text(self, tab, text):
+    def _text(self, tab, text, md=False):
         box = ctk.CTkTextbox(tab, fg_color="transparent", font=f(12), text_color=TEXT, wrap="word")
         box.pack(fill="both", expand=True)
-        box.insert("1.0", text)
+        if md:
+            self._insert_md(box, text)
+        else:
+            box.insert("1.0", text)
         box.configure(state="disabled")
+
+    @staticmethod
+    def _insert_md(box, text):
+        """CHANGELOG 같은 간단한 마크다운을 제목/목록으로 보여줘요 (기호는 숨김)."""
+        import re
+        tb = box._textbox
+        fg = tb.cget("fg")
+        tb.tag_configure("h2", font=(FONT, 15, "bold"), foreground=fg, spacing1=14, spacing3=4)
+        tb.tag_configure("h3", font=(FONT, 12, "bold"), foreground="#8B7CFF", spacing1=8, spacing3=2)
+        tb.tag_configure("li", foreground=fg, lmargin1=8, lmargin2=22, spacing3=2)
+        tb.tag_configure("quote", lmargin1=8, lmargin2=8, foreground="#9A98B8", spacing3=4)
+        nl = chr(10)
+        for raw in text.split(nl):
+            line = raw.rstrip()
+            if not line or line.startswith("# ") or re.match(r"^[^\w\s]*\s*(English|한국어|日本語)\s*:", line):
+                continue
+            line = re.sub(r"\[([^\]]+)\]\([^)]+\)", lambda m: m.group(1), line)
+            line = line.replace("**", "").replace("`", "")
+            if line.startswith("### "):
+                box.insert("end", line[4:] + nl, "h3")
+            elif line.startswith("## "):
+                box.insert("end", line[3:] + nl, "h2")
+            elif line.startswith("- "):
+                box.insert("end", "•  " + line[2:] + nl, "li")
+            elif line.startswith("> "):
+                box.insert("end", line[2:] + nl, "quote")
+            else:
+                box.insert("end", line + nl)
 
     def _feedback(self, tab):
         ctk.CTkLabel(tab, text=T("fb_hint"), font=f(14, True), text_color=TEXT, anchor="w").pack(fill="x", pady=(4, 6))
@@ -1266,18 +1329,17 @@ class InfoWindow(ctk.CTkToplevel):
     def _developer(self, tab):
         body = ctk.CTkScrollableFrame(tab, fg_color="transparent")
         body.pack(fill="both", expand=True)
-        hero = ctk.CTkFrame(body, fg_color=PURPLE, corner_radius=26)
+        hero = ctk.CTkFrame(body, fg_color=FIELD, corner_radius=22)
         hero.pack(fill="x", padx=4, pady=(4, 10))
         try:
             self._logo = tk.PhotoImage(file=str(resource_path("RHLingo_logo.png")))
-            ctk.CTkLabel(hero, image=self._logo, text="").pack(side="left", padx=(22, 14), pady=18)
+            ctk.CTkLabel(hero, image=self._logo, text="").pack(side="left", padx=(18, 12), pady=14)
         except Exception:
             pass
         col = ctk.CTkFrame(hero, fg_color="transparent")
-        col.pack(side="left", fill="x", expand=True, pady=16)
-        ctk.CTkLabel(col, text="RabbitHaru", font=f(24, True), text_color="#FFFFFF", anchor="w").pack(fill="x")
-        ctk.CTkLabel(col, text=T("dev_role"), font=f(12), text_color="#E6E1FF", anchor="w").pack(fill="x")
-        ctk.CTkLabel(col, text=f"{APP_NAME}  ·  v{APP_VERSION}", font=f(11), text_color="#CFC8FF", anchor="w").pack(fill="x", pady=(4, 0))
+        col.pack(side="left", fill="x", expand=True, pady=12)
+        ctk.CTkLabel(col, text="RabbitHaru", font=f(18, True), text_color=TEXT, anchor="w").pack(fill="x")
+        ctk.CTkLabel(col, text=T("dev_role"), font=f(12), text_color=SUB, anchor="w").pack(fill="x")
 
         card = ctk.CTkFrame(body, fg_color=FIELD, corner_radius=20)
         card.pack(fill="x", padx=4, pady=5)

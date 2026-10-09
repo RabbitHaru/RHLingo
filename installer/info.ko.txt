@@ -5,4 +5,4 @@
 • 설정과 다운로드한 모델은 내 사용자 폴더(%APPDATA%\RabbitHaru)에 저장돼요. 삭제할 때 함께 지울 수도 있어요.
 • 프로그램에 코드 서명이 없어서 Windows SmartScreen 경고가 뜰 수 있어요. 작은 오픈소스 프로젝트에서는 정상이에요.
 
-소스 코드와 개인정보 처리 안내: https://github.com/RabbitHaru/HaruMimi
+소스 코드와 개인정보 처리 안내: https://github.com/RabbitHaru/RHLingo

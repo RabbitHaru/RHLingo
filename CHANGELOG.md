@@ -9,9 +9,14 @@
 - **Setup wizard** (Inno Setup): per-user install without admin rights, Start Menu/desktop shortcuts, a rounded purple Windows 11-style look that follows light/dark mode, English/Korean/Japanese, and an uninstaller that asks before deleting your settings and models.
 
 - **One-click update**: "Check for updates now" (Settings → Privacy) and the optional startup check find newer releases, including betas if you run a beta. Installing asks every time, shows the size, verifies the installer's SHA-256 checksum, then updates and reopens the app (installed version only; the portable zip opens the release page instead).
-- **Developer** tab with a profile card, a note from the developer, links and a Special Thanks list, reachable from a new bottom menu button.
+- **About me** tab (inside ♥ About) with a small profile card, a note from the developer, links and a Special Thanks list.
+- `tools/bench.py`: a reproducible benchmark (footprint, latency, speech-recognition accuracy, translation quality).
 
 ### Changed
+- **Redesigned main screen**: languages are grouped in one card, then Start and status, with the mic level at the bottom. The developer's name is no longer on the main window or the title bar.
+- **Far fewer startup popups**: the first run shows only the one privacy window (your choice is remembered and never asked again unless you reset it). After an update, a one-line note appears in the chat instead of opening a window.
+- **About window** now uses a readable left menu instead of small tabs, and the update notes are formatted with headings and bullets.
+- The meter no longer redraws when the level hasn't changed (lower idle CPU).
 - The app is now called **RH Lingo** (was HaruMimi) to match its new simple **RH** bunny-ear icon, used for the window, taskbar, exe and installer. Settings and models in your user folder are unchanged.
 
 ## v1.0.0-beta.1 — First beta

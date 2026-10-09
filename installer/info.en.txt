@@ -5,4 +5,4 @@
 • Settings and downloaded models are stored in your user folder (%APPDATA%\RabbitHaru). Uninstalling can remove them too.
 • The program is not code-signed, so Windows SmartScreen may show a warning. This is expected for a small open-source project.
 
-Source code and privacy notice: https://github.com/RabbitHaru/HaruMimi
+Source code and privacy notice: https://github.com/RabbitHaru/RHLingo

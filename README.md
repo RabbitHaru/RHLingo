@@ -2,7 +2,7 @@
 
 🇰🇷 한국어: [README.ko.md](README.ko.md)
 
-> ⚠️ **Beta** (v1.0.0-beta.1): the basics are verified, but real-world feedback is very welcome. [Open an issue](https://github.com/RabbitHaru/HaruMimi/issues)
+> ⚠️ **Beta** (v1.0.0-beta.1): the basics are verified, but real-world feedback is very welcome. [Open an issue](https://github.com/RabbitHaru/RHLingo/issues)
 
 Speech-to-text and translator for the VRChat chatbox. Speak into your microphone → it recognizes your speech → (translates) → sends it to your VRChat chatbox via OSC. Korean / Japanese / English. Built for **accuracy, speed and a light footprint**.
 

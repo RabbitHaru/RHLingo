@@ -5,4 +5,4 @@
 • 設定とダウンロードしたモデルはユーザーフォルダ(%APPDATA%\RabbitHaru)に保存されます。アンインストール時に一緒に削除することもできます。
 • プログラムにコード署名がないため、Windows SmartScreenの警告が表示されることがあります。小さなオープンソースプロジェクトでは正常です。
 
-ソースコードとプライバシーについて: https://github.com/RabbitHaru/HaruMimi
+ソースコードとプライバシーについて: https://github.com/RabbitHaru/RHLingo
