@@ -181,6 +181,14 @@ class Engine:
         self.running = False
 
     # -- 모델 -------------------------------------------------------------
+    def _model_name(self, device):
+        """auto: GPU면 small, CPU면 코어 수에 맞춰 가볍게 선택 (가벼움 우선)."""
+        name = self.cfg["model"]
+        if name != "auto":
+            return name
+        cores = os.cpu_count() or 4
+        return "small" if device == "cuda" or cores >= 8 else "base" if cores >= 4 else "tiny"
+
     def _load_model(self):
         os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
         _add_cuda_dll_dirs()
@@ -191,7 +199,7 @@ class Engine:
         last = None
         for device, compute in tries:
             try:
-                m = WhisperModel(self.cfg["model"], device=device, compute_type=compute,
+                m = WhisperModel(self._model_name(device), device=device, compute_type=compute,
                                  download_root=str(MODEL_DIR), cpu_threads=4)
                 # 워밍업: GPU 라이브러리가 없으면 여기서 실패 -> CPU로 자동 전환
                 list(m.transcribe(np.zeros(SR, dtype=np.float32), language="en")[0])

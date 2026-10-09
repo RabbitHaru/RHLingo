@@ -27,9 +27,9 @@ DEFAULTS = {
     "theme": "system",        # system / light / dark
     "always_on_top": False,
     "mic": None,              # None = 기본 장치
-    "source": "auto",         # auto / ko / ja / en
-    "target": "ja",           # ko / ja / en
-    "model": "small",         # tiny / base / small / medium / large-v3-turbo
+    "source": None,           # None = 앱 언어와 같게 / auto / ko / ja / en
+    "target": None,           # None = 앱 언어에 따라 자동 (ko->ja, ja->ko, en->ja) / ko / ja / en
+    "model": "auto",          # auto(PC 사양에 맞게) / tiny / base / small / medium / large-v3-turbo
     "device_type": "auto",    # auto / cuda / cpu
     "sensitivity": 60,        # 0~100 (높을수록 작은 소리도 인식)
     "silence_sec": 0.6,       # 이 시간 이상 조용하면 발화 종료
@@ -52,6 +52,10 @@ def load_config():
         pass
     if cfg["ui_lang"] not in ("ko", "ja", "en"):
         cfg["ui_lang"] = _system_ui_lang()
+    if cfg["source"] not in ("auto", "ko", "ja", "en"):
+        cfg["source"] = cfg["ui_lang"]  # 내가 쓰는 언어로 말한다고 가정 (작은 모델도 정확해짐)
+    if cfg["target"] not in ("ko", "ja", "en"):
+        cfg["target"] = {"ko": "ja", "ja": "ko"}.get(cfg["ui_lang"], "ja")
     return cfg
 
 

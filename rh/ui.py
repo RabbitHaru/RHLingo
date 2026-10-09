@@ -319,7 +319,7 @@ class SettingsWindow(ctk.CTkToplevel):
                       command=self._refresh_mics).pack(anchor="w", padx=14, pady=(0, 10))
         self.option("source", T("speech_lang"), [("auto", T("auto"))] + [(c, lang_label(c)) for c in LANGS])
         self.option("model", T("model"), [(m, T("m_" + m)) for m in
-                                          ("tiny", "base", "small", "medium", "large-v3-turbo")])
+                                          ("auto", "tiny", "base", "small", "medium", "large-v3-turbo")])
         self.option("device_type", T("device"), [("auto", T("dev_auto")), ("cuda", T("dev_gpu")), ("cpu", T("dev_cpu"))])
         self.slider("sensitivity", T("sensitivity"), 0, 100, 100, fmt="{:.0f}")
         self.slider("silence_sec", T("silence"), 0.3, 1.5, 24, fmt="{:.1f}s")
