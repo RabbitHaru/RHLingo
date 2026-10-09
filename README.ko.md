@@ -24,6 +24,8 @@ VRChat 채팅박스용 음성 인식(STT) 번역기예요. 마이크로 말하�
 ## 개인정보
 개발자는 개인정보를 수집하지 않아요. 온라인 번역 서비스와 새 버전 확인은 **동의한 경우에만** 동작하고, 다운로드는 **매번 허락을 받아요**. 자세한 내용: [한국어](PRIVACY.ko.md) · [English](PRIVACY.en.md) · [日本語](PRIVACY.ja.md)
 
+측정 결과(속도·메모리·정확도): [docs/BENCHMARKS.ko.md](docs/BENCHMARKS.ko.md)
+
 ## 개발
 ```
 pip install -r requirements.txt

@@ -1,0 +1,175 @@
+{
+ "machine": {
+  "cpu_threads": 16,
+  "python": "3.12.10"
+ },
+ "app_version": "1.0.0-beta.1",
+ "footprint": {
+  "installer_mb": 66.6,
+  "install_folder_mb": 251,
+  "startup_to_window_s": 0.7,
+  "exe_idle_ram_mb": 70,
+  "exe_idle_cpu_pct_of_one_core": 0.78,
+  "stt_load_s": 1.78,
+  "stt_device": "cpu",
+  "stt_ram_added_mb": 307,
+  "stt_model": "small",
+  "listening_silence_cpu_pct_of_one_core": 0.16,
+  "mt_load_s": 0.52,
+  "mt_ram_added_mb": 513
+ },
+ "speed": {
+  "STT only, idle PC": {
+   "n": 24,
+   "p50": 0.532,
+   "p90": 0.601,
+   "max": 0.608,
+   "mean": 0.534
+  },
+  "STT + offline translation ko->ja, idle PC": {
+   "n": 24,
+   "p50": 0.737,
+   "p90": 0.813,
+   "max": 0.865,
+   "mean": 0.718
+  },
+  "STT only, 8 CPU-hog processes": {
+   "n": 24,
+   "p50": 0.571,
+   "p90": 0.659,
+   "max": 0.697,
+   "mean": 0.583
+  },
+  "translation only ko->ja": {
+   "n": 24,
+   "p50": 0.199,
+   "p90": 0.465,
+   "max": 0.479,
+   "mean": 0.215
+  },
+  "translation only ko->en": {
+   "n": 24,
+   "p50": 0.177,
+   "p90": 0.22,
+   "max": 0.224,
+   "mean": 0.173
+  },
+  "translation only en->ko": {
+   "n": 24,
+   "p50": 0.21,
+   "p90": 0.278,
+   "max": 0.285,
+   "mean": 0.2
+  },
+  "translation only ja->ko": {
+   "n": 24,
+   "p50": 0.188,
+   "p90": 0.254,
+   "max": 0.257,
+   "mean": 0.198
+  },
+  "whisper_only_median_s": {
+   "ko0 (4.1s audio)": 0.174,
+   "ko1 (3.6s audio)": 0.17,
+   "ko2 (4.2s audio)": 0.187,
+   "ko3 (3.5s audio)": 0.2,
+   "ko4 (2.6s audio)": 0.163,
+   "ko5 (3.2s audio)": 0.17,
+   "ko6 (3.5s audio)": 0.167,
+   "ko7 (3.3s audio)": 0.188
+  }
+ },
+ "stt": {
+  "model": "small",
+  "conditions": {
+   "clean": {
+    "CER_ko_pct": 4.2,
+    "CER_en_pct": 1.7,
+    "CER_all_pct": 2.9,
+    "detected_pct": 100
+   },
+   "quiet voice (x0.1)": {
+    "CER_ko_pct": 100.0,
+    "CER_en_pct": 100.0,
+    "CER_all_pct": 100.0,
+    "detected_pct": 0
+   },
+   "fan, SNR 10 dB": {
+    "CER_ko_pct": 16.4,
+    "CER_en_pct": 2.1,
+    "CER_all_pct": 9.3,
+    "detected_pct": 100
+   },
+   "mains hum, SNR 5 dB": {
+    "CER_ko_pct": 7.2,
+    "CER_en_pct": 3.3,
+    "CER_all_pct": 5.3,
+    "detected_pct": 97
+   },
+   "keyboard, SNR 3 dB": {
+    "CER_ko_pct": 15.4,
+    "CER_en_pct": 25.5,
+    "CER_all_pct": 20.4,
+    "detected_pct": 81
+   },
+   "background voices, SNR 8 dB": {
+    "CER_ko_pct": 11.7,
+    "CER_en_pct": 38.2,
+    "CER_all_pct": 25.0,
+    "detected_pct": 94
+   }
+  }
+ },
+ "translate": {
+  "standard": {
+   "ko->en": {
+    "chrF": 37.2,
+    "example": [
+     "안녕하세요, 오늘 처음 왔는데 월드가 정말 예뻐요.",
+     "Hello, I came here for the first time today and world is really nice.",
+     "Hello, this is my first time here and the world is really beautiful."
+    ]
+   },
+   "ko->ja": {
+    "chrF": 37.5,
+    "example": [
+     "안녕하세요, 오늘 처음 왔는데 월드가 정말 예뻐요.",
+     "こんにちは、今日は初めて来て、ワールドは本当に素敵です。",
+     "こんにちは、今日初めて来たんですが、このワールドはとても綺麗ですね。"
+    ]
+   },
+   "en->ko": {
+    "chrF": 22.5,
+    "example": [
+     "Hello, this is my first time here and the world is really beautiful.",
+     "안녕하세요, 이것은 내 첫 번째 여기에 있고 월드 정말 아름답습니다.",
+     "안녕하세요, 오늘 처음 왔는데 월드가 정말 예뻐요."
+    ]
+   },
+   "en->ja": {
+    "chrF": 38.3,
+    "example": [
+     "Hello, this is my first time here and the world is really beautiful.",
+     "こんにちは、これは私の初めてのここで、ワールドは本当に美しいです。",
+     "こんにちは、今日初めて来たんですが、このワールドはとても綺麗ですね。"
+    ]
+   },
+   "ja->ko": {
+    "chrF": 23.6,
+    "example": [
+     "こんにちは、今日初めて来たんですが、このワールドはとても綺麗ですね。",
+     "안녕하세요, 오늘 처음으로 오셨는데 이 월드는 정말 아름답습니다.",
+     "안녕하세요, 오늘 처음 왔는데 월드가 정말 예뻐요."
+    ]
+   },
+   "ja->en": {
+    "chrF": 41.3,
+    "example": [
+     "こんにちは、今日初めて来たんですが、このワールドはとても綺麗ですね。",
+     "Hello, I'm here for the first time today, but this world is very nice.",
+     "Hello, this is my first time here and the world is really beautiful."
+    ]
+   }
+  }
+ }
+}

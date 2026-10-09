@@ -24,6 +24,8 @@ Speech-to-text and translator for the VRChat chatbox. Speak into your microphone
 ## Privacy
 The developer collects no personal data. Online translation services and update checks are used **only with your consent**, and every download **asks first**. Details: [English](PRIVACY.en.md) · [한국어](PRIVACY.ko.md) · [日本語](PRIVACY.ja.md)
 
+Measured numbers (speed, memory, accuracy): [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
+
 ## Development
 ```
 pip install -r requirements.txt

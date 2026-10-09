@@ -2,6 +2,8 @@
 
     python tools/bench.py                 # 전부
     python tools/bench.py footprint speed # 일부만 (footprint | speed | stt | translate)
+    (Nothing is downloaded unless you pass --download-stt / --download-mt, which you should only do after approving the size.)
+    python tools/bench.py --mt-dir D:/tmp/mt --download-mt translate   # 번역 모델이 없으면 (사용자가 허락한 경우에만) 그 폴더에 받아서 측정
 
 - 음성은 Windows 에 기본 설치된 SAPI 합성 음성(ko-KR Heami, en-US Zira)으로 만들어요. 소음은 시드 고정 난수라 다시 돌려도 같아요.
   (일본어 합성 음성이 기본 설치돼 있지 않아 일본어 음성 인식은 재지 않아요. 번역은 일본어도 글자 기준으로 재요.)
@@ -240,6 +242,16 @@ def run_engine(cfg, model, stream, realtime=False, speech_end_idx=None, settle=0
     return res, t0
 
 
+def load_stt(cfg):
+    """음성 인식 모델을 불러옴. 받아 둔 게 없으면 --download-stt 가 있을 때만 받음 (사용자 허락 없이는 아무것도 받지 않음)."""
+    from rh import engine as E
+    name = E.model_name(cfg)
+    if not E.model_cached(name) and "--download-stt" not in sys.argv:
+        sys.exit(f"The speech model '{name}' is not installed, and this benchmark never downloads without your approval. "
+                 f"Install it from the app (Start asks first), or re-run with --download-stt if you approve the download (~{E.MODEL_SIZES_MB[name]} MB).")
+    return E.get_model(cfg)
+
+
 def base_cfg(**kw):
     from rh.config import load_config
     cfg = load_config()
@@ -297,7 +309,7 @@ def stage_footprint():
     from rh import engine as E
     cfg = base_cfg()
     base = rss_mb()
-    t = time.perf_counter(); model, dev = E.get_model(cfg); r["stt_load_s"] = round(time.perf_counter() - t, 2)
+    t = time.perf_counter(); model, dev = load_stt(cfg); r["stt_load_s"] = round(time.perf_counter() - t, 2)
     r["stt_device"] = dev; r["stt_ram_added_mb"] = round(rss_mb() - base)
     r["stt_model"] = E.model_name(cfg)
     # 듣는 중(무음) CPU. 모델을 올린 직후 몇 초는 워밍업이라 그 뒤부터 잼
@@ -325,7 +337,7 @@ def stage_footprint():
 def stage_speed(repeats=3):
     from rh import engine as E
     cfg = base_cfg()
-    model, _ = E.get_model(cfg)
+    model, _ = load_stt(cfg)
     global rng
     out = {}
 
@@ -385,7 +397,7 @@ def stage_speed(repeats=3):
 def stage_stt(seeds=(1, 2)):
     from rh import engine as E
     cfg = base_cfg()
-    model, _ = E.get_model(cfg)
+    model, _ = load_stt(cfg)
     global rng
     scores = {c[0]: {"ko": [], "en": []} for c in CONDS}
     detected = {c[0]: [0, 0] for c in CONDS}
@@ -436,13 +448,31 @@ def stage_translate():
 
 
 def main():
-    stages = sys.argv[1:] or ["footprint", "speed", "stt", "translate"]
+    args = sys.argv[1:]
+    mt_dir = None
+    if "--mt-dir" in args:  # 오프라인 번역 모델을 이 폴더에서 찾고(없으면 --download-mt 일 때만 받음). 내 설정 폴더는 건드리지 않음
+        i = args.index("--mt-dir"); mt_dir = Path(args[i + 1]); del args[i:i + 2]
+    download = "--download-mt" in args
+    args = [a for a in args if a not in ("--download-mt", "--download-stt")]
+    stages = args or ["footprint", "speed", "stt", "translate"]
+    if OUT.exists():
+        try:
+            RESULT.update(json.loads(OUT.read_text(encoding="utf-8")))  # 일부 단계만 다시 돌려도 이전 결과를 유지
+        except Exception:
+            pass
     RESULT["machine"] = {"cpu_threads": os.cpu_count(), "python": sys.version.split()[0]}
     try:
         from rh.config import APP_VERSION
         RESULT["app_version"] = APP_VERSION
     except Exception:
         pass
+    if mt_dir is not None:
+        from rh import engine as E
+        E.mt_dir = lambda tier="standard": mt_dir / E.MT_MODELS[tier]["name"]
+        if download and not E.mt_cached("standard"):
+            print("downloading offline translation model (user approved) ->", mt_dir, flush=True)
+            mt_dir.mkdir(parents=True, exist_ok=True)
+            E.download_mt("standard", progress=lambda p: p is not None and p % 20 == 0 and print(f"  {p}%", flush=True))
     make_audio()
     for s in stages:
         print(f"== {s}", flush=True)
