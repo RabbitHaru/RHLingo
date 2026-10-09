@@ -10,7 +10,7 @@ if not exist "%PY%" set PY=python
   --collect-all customtkinter ^
   --collect-all faster_whisper ^
   --collect-all ctranslate2 ^
-  --collect-binaries onnxruntime ^
+  --collect-binaries onnxruntime --collect-binaries sentencepiece ^
   --exclude-module matplotlib --exclude-module scipy --exclude-module pandas --exclude-module torch ^
   HaruMimi.py
 pause

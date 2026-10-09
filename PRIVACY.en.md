@@ -8,21 +8,26 @@ The app has no accounts, analytics, ads or remote logging.
 - Recognized text (chat history): shown on screen only and gone when you close the app. Never saved to a file.
 
 ■ Network connections (only after your consent / approval)
-1) Translation - only if you agreed (first-run notice or when choosing a target language)
+1) Translation - the default offline translator sends nothing. The following applies only if you choose an online service and agree.
    - Sent: the recognized sentence as text (never your voice)
-   - To: Google Translate servers; MyMemory as a fallback (servers may be abroad)
-   - Purpose: translation. The developer stores nothing; each service has its own policy.
+   - To: the ONE translation service you pick in Settings (all official APIs)
+       · MyMemory (no key, daily usage limit)
+       · DeepL (your own API key)
+       · Google Cloud Translation (your own API key)
+     Servers may be abroad. If a request fails, the text is never silently sent to another service.
+   - Purpose: translation. The developer stores nothing; each service has its own privacy policy.
    - If you don't agree, the app only transcribes. You can withdraw any time in Settings → Privacy.
-2) Speech model download - you are told the size and asked every time (huggingface.co).
+   - API keys are stored encrypted on this PC (tied to your Windows account) and sent only to the service you chose.
+2) Model downloads (speech recognition model, offline translation model) - you are told the size and asked every time (huggingface.co). Downloaded files are verified by checksum (SHA-256).
    - Using an already downloaded model needs no internet access.
 3) Update check - optional (off by default). When on, it asks github.com for the latest version.
 4) Sending to VRChat - only to VRChat on the same PC (127.0.0.1). Text shown in the VRChat chatbox is visible to others in your world, so what you say is your responsibility.
 5) Feedback - the button opens a GitHub issue form in your browser; you review and submit it yourself. App version, Windows version and model name are pre-filled, so check before submitting.
 
 ■ Stored on your PC (in %APPDATA%\RabbitHaru)
-- config.json: settings (selected microphone name, languages, consent choices)
+- config.json: settings (selected microphone name, languages, consent choices, encrypted API keys)
 - log.txt: error log (no conversation content)
-- models\: downloaded speech models
+- models\: downloaded speech and translation models
 - Settings → Privacy → "Delete all local data" removes everything at once.
 
 ■ Contact: Issues on the GitHub repository

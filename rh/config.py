@@ -1,4 +1,5 @@
 """설정 저장/불러오기. 사용자 데이터는 %APPDATA%\\RabbitHaru 에 저장 (exe로 배포해도 안전)."""
+import copy
 import json
 import os
 import time
@@ -43,6 +44,8 @@ DEFAULTS = {
     "keep_model": True,       # 모델을 메모리에 유지 -> 시작 즉시
     "live_preview": None,     # None = PC 사양에 따라 자동 (말하는 중 미리보기)
     "vocab": "",              # 자주 쓰는 단어(이름 등) - 인식 도우미
+    "translator": "local",    # local(오프라인·한도 없음, 기본) / mymemory / deepl / google (사용자 본인의 공식 API 키)
+    "api_keys": {},           # {서비스: DPAPI로 암호화된 키}
     "consent_done": False,    # 첫 실행 개인정보 안내를 봤는지
     "consent_translate": False,  # 번역을 위해 인식된 문장을 Google 번역 서버로 전송하는 것에 동의
     "consent_update": False,  # 새 버전 확인(github.com 접속)에 동의
@@ -51,7 +54,7 @@ DEFAULTS = {
 
 
 def load_config():
-    cfg = dict(DEFAULTS)
+    cfg = copy.deepcopy(DEFAULTS)
     try:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))  # 메모장 등이 붙인 BOM도 허용
         cfg.update({k: v for k, v in data.items() if k in DEFAULTS})

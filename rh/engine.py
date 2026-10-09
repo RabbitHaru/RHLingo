@@ -1,16 +1,24 @@
 """음성 인식 + 번역 + VRChat OSC 전송 엔진 (UI와 독립). 무거운 모듈은 필요할 때만 불러옵니다."""
 import collections
 import gc
+import hashlib
+import html
+import json
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import numpy as np
 from pythonosc.udp_client import SimpleUDPClient
 
+from . import secret
 from .config import MODEL_DIR, log_error
 
 SR = 16000
@@ -282,25 +290,172 @@ def _resolve_mic(name):
     return None
 
 
-# ---------------------------------------------------------------- 번역
-def translate_text(text, src, tgt):
-    from deep_translator import GoogleTranslator, MyMemoryTranslator
-    s = src if src in MM_CODES else "auto"
+# ---------------------------------------------------------------- 번역 (공식 API 만 사용)
+class TranslateError(Exception):
+    pass
+
+
+def _http_json(url, body=None, headers=None, timeout=8):
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    h = {"User-Agent": "HaruMimi", **(headers or {})}
+    req = urllib.request.Request(url, data=data, headers=h, method="GET" if body is None else "POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise TranslateError({401: "invalid API key", 403: "invalid API key", 429: "rate limited",
+                              456: "monthly quota exceeded"}.get(e.code, f"HTTP {e.code}"))
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise TranslateError("network error")
+
+
+def _mymemory(text, src, tgt, key=None):
+    pair = f"{MM_CODES.get(src, 'autodetect')}|{MM_CODES[tgt]}"
+    r = _http_json("https://api.mymemory.translated.net/get?" +
+                   urllib.parse.urlencode({"q": text[:450], "langpair": pair}))
+    out = (r.get("responseData") or {}).get("translatedText", "")
+    if r.get("responseStatus") != 200 or not out or "MYMEMORY WARNING" in out:
+        raise TranslateError("daily limit reached (MyMemory)")
+    return html.unescape(out)
+
+
+def _deepl(text, src, tgt, key):
+    host = "api-free.deepl.com" if key.endswith(":fx") else "api.deepl.com"
+    body = {"text": [text], "target_lang": {"ko": "KO", "ja": "JA", "en": "EN-US"}[tgt]}
+    if src in MM_CODES:
+        body["source_lang"] = src.upper()
+    r = _http_json(f"https://{host}/v2/translate", body,
+                   {"Authorization": f"DeepL-Auth-Key {key}", "Content-Type": "application/json"})
+    return r["translations"][0]["text"]
+
+
+def _google_cloud(text, src, tgt, key):
+    body = {"q": text, "target": tgt, "format": "text"}
+    if src in MM_CODES:
+        body["source"] = src
+    r = _http_json("https://translation.googleapis.com/language/translate/v2", body,
+                   {"X-goog-api-key": key, "Content-Type": "application/json"})
+    return html.unescape(r["data"]["translations"][0]["translatedText"])
+
+
+
+# ---------------------------------------------------------------- 오프라인 번역 (M2M100 418M, MIT 라이선스)
+# 한도 없음 / 인터넷 불필요 / 문장이 PC 밖으로 나가지 않음. 받은 파일은 SHA-256 으로 검증합니다.
+MT_NAME = "m2m100-418m-int8"
+MT_BASE_URL = "https://huggingface.co/gn64/M2M100_418M_CTranslate2/resolve/main/"
+MT_FILES = {  # 파일명: (SHA-256, 크기)
+    "config.json": ("8f6496adfc930cbfecbe8281112197705c488fab47d34b4829b06d7f478909af", 223),
+    "sentencepiece.bpe.model": ("d8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a", 2423393),
+    "shared_vocabulary.json": ("7eb5d0ff184c6095c7c10f9911c0aea492250abd12854f9c3d787c64b1c6397e", 2796509),
+    "model.bin": ("a1826980fc5c037e69c7ac94fcb56c03001a66f380eb71863cc0a3879e71421b", 490667752),
+}
+MT_SIZE_MB = 494
+MT_DIR = MODEL_DIR / MT_NAME
+
+
+def mt_cached():
+    return all((MT_DIR / n).exists() and (MT_DIR / n).stat().st_size == sz for n, (_, sz) in MT_FILES.items())
+
+
+def download_mt(progress=None, base_url=MT_BASE_URL, target_dir=None):
+    """오프라인 번역 모델 다운로드 (호출 전에 사용자 허락을 받을 것). 해시가 다르면 폐기."""
+    d = Path(target_dir or MT_DIR)
+    tmp = d.with_name(d.name + ".part")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    total, done = sum(sz for _, sz in MT_FILES.values()), 0
+    try:
+        for name, (digest, _) in MT_FILES.items():
+            h = hashlib.sha256()
+            req = urllib.request.Request(base_url + name, headers={"User-Agent": "HaruMimi"})
+            with urllib.request.urlopen(req, timeout=30) as r, open(tmp / name, "wb") as out:
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    h.update(chunk)
+                    done += len(chunk)
+                    if progress:
+                        progress(min(99, int(done * 100 / total)))
+            if h.hexdigest() != digest:
+                raise TranslateError(f"checksum mismatch: {name}")
+        shutil.rmtree(d, ignore_errors=True)
+        tmp.replace(d)
+    except Exception:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    finally:
+        if progress:
+            progress(None)
+
+
+_mt = {"tr": None, "sp": None}
+_mt_lock = threading.Lock()
+
+
+def release_mt():
+    with _mt_lock:
+        _mt.update(tr=None, sp=None)
+    gc.collect()
+
+
+def guess_lang(text):
+    for ch in text:
+        if 0xAC00 <= ord(ch) <= 0xD7A3 or 0x1100 <= ord(ch) <= 0x11FF:
+            return "ko"
+    for ch in text:
+        if 0x3040 <= ord(ch) <= 0x30FF or 0x4E00 <= ord(ch) <= 0x9FFF:
+            return "ja"
+    return "en"
+
+
+def _local(text, src, tgt, key=None):
+    if not mt_cached():
+        raise TranslateError("offline model not downloaded")
+    with _mt_lock:
+        if _mt["tr"] is None:
+            import ctranslate2
+            import sentencepiece
+            _mt["sp"] = sentencepiece.SentencePieceProcessor(model_file=str(MT_DIR / "sentencepiece.bpe.model"))
+            _mt["tr"] = ctranslate2.Translator(str(MT_DIR), device="cpu", compute_type="int8", inter_threads=1,
+                                               intra_threads=min(8, os.cpu_count() or 4))
+        tr, sp = _mt["tr"], _mt["sp"]
+        s = src if src and sp.piece_to_id(f"__{src}__") != sp.unk_id() else guess_lang(text)
+        toks = [f"__{s}__"] + sp.encode(text, out_type=str) + ["</s>"]  # M2M100 은 종료 토큰을 직접 붙여야 함
+        r = tr.translate_batch([toks], target_prefix=[[f"__{tgt}__"]], beam_size=2, max_decoding_length=96,
+                               repetition_penalty=1.15, no_repeat_ngram_size=3)
+        out = sp.decode(r[0].hypotheses[0][1:]).strip()
+    if not out:
+        raise TranslateError("empty translation")
+    return out
+
+PROVIDERS = {"local": (_local, False), "mymemory": (_mymemory, False), "deepl": (_deepl, True),
+             "google": (_google_cloud, True)}
+
+
+def translation_allowed(cfg):
+    """오프라인 번역은 문장이 PC 밖으로 나가지 않으므로 동의 불필요. 온라인 서비스는 동의 필요."""
+    return cfg.get("translator", "local") == "local" or bool(cfg.get("consent_translate"))
+
+
+def translate_text(cfg, text, src, tgt):
+    """사용자가 고른 번역 서비스 하나로만 보냄 (실패해도 다른 서비스로 몰래 보내지 않음)."""
+    name = cfg.get("translator", "local")
+    fn, needs_key = PROVIDERS.get(name, PROVIDERS["local"])
+    key = secret.decrypt(cfg.get("api_keys", {}).get(name, ""))
+    if needs_key and not key:
+        raise TranslateError("API key not set")
     last = None
     for _ in range(2):
         try:
-            r = GoogleTranslator(source=s, target=tgt).translate(text)
-            if r:
-                return r
-        except Exception as e:
+            return fn(text, src, tgt, key)
+        except TranslateError as e:
             last = e
+            if "network" not in str(e):
+                break
             time.sleep(0.3)
-    if s in MM_CODES:  # 구글 실패 시 예비 번역기
-        try:
-            return MyMemoryTranslator(source=MM_CODES[s], target=MM_CODES[tgt]).translate(text)
-        except Exception as e:
-            last = e
-    raise last or RuntimeError("translate failed")
+    raise last
 
 
 def format_chatbox(out, orig, show_original):
@@ -421,6 +576,7 @@ class Engine:
             self.model = None
             if not self.cfg.get("keep_model", True):
                 release_model()
+                release_mt()
 
     def _open_stream(self):
         import sounddevice as sd
@@ -567,15 +723,21 @@ class Engine:
         if not text:
             self.out.typing(False)
             return
-        tgt = c["target"] if c.get("consent_translate") else "off"  # 동의 없으면 번역(외부 전송) 안 함
+        tgt = c["target"] if translation_allowed(c) else "off"  # 온라인 번역은 동의가 있을 때만
         out = text
         if tgt != "off" and src != tgt:
             try:
-                out = translate_text(text, src, tgt)
+                out = translate_text(c, text, src, tgt)
             except Exception as e:
-                log_error(f"translate: {type(e).__name__}")
-                self.events.put(("error", f"translate: {e}"))
-                self.out.typing(False)
-                return
+                if "not downloaded" in str(e):  # 오프라인 모델이 아직 없음 -> 받아쓰기만, 안내는 한 번
+                    if not getattr(self, "_warned_mt", False):
+                        self._warned_mt = True
+                        self.events.put(("info", "info_need_mt"))
+                    out, tgt = text, "off"
+                else:
+                    log_error(f"translate: {type(e).__name__}")
+                    self.events.put(("error", f"translate: {e}"))
+                    self.out.typing(False)
+                    return
         self.out.send(format_chatbox(out, text, c["show_original"] and tgt != "off"))
         self.events.put(("result", src, tgt, text, out))

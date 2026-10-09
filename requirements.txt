@@ -1,6 +1,6 @@
 faster-whisper
 sounddevice
 numpy
-deep-translator
 python-osc
 customtkinter
+sentencepiece
