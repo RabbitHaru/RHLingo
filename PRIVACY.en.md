@@ -1,4 +1,4 @@
-Privacy notice (HaruMimi by RabbitHaru)
+Privacy notice (RH Lingo by RabbitHaru)
 
 ■ The developer does not collect, store or receive any personal data.
 The app has no accounts, analytics, ads or remote logging.
@@ -21,7 +21,7 @@ The app has no accounts, analytics, ads or remote logging.
    - API keys are stored encrypted on this PC (tied to your Windows account) and sent only to the service you chose.
 2) Model downloads (speech recognition model, offline translation model) - you are told the size and asked every time (huggingface.co). Downloaded files are verified by checksum (SHA-256).
    - Using an already downloaded model needs no internet access.
-3) Update check - optional (off by default). When on, it asks github.com for the latest version.
+3) Update check - optional (off by default). When on, or when you press "Check for updates now", it asks github.com for the list of releases. Installing an update is never automatic: the app asks every time, shows the download size, downloads the installer from this project's GitHub releases, verifies its SHA-256 checksum (a file that fails is discarded), and only then runs it.
 4) Sending to VRChat - only to VRChat on the same PC (127.0.0.1). Text shown in the VRChat chatbox is visible to others in your world, so what you say is your responsibility.
 5) Feedback - the button opens a GitHub issue form in your browser; you review and submit it yourself. App version, Windows version and model name are pre-filled, so check before submitting.
 

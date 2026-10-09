@@ -21,4 +21,5 @@ Every release keeps **English and Korean** documents in sync (Japanese later).
 - [ ] Commit and push to `main` / 커밋 후 `main`에 push
 - [ ] Tag `vX.Y.Z` and create a GitHub Release with notes in **both languages**: English first, then Korean (separate headings)
       `vX.Y.Z` 태그 후 GitHub Release 생성, 릴리스 노트는 **영어 → 한국어** 순서로 제목을 나눠서 작성
-- [ ] Attach the zipped `dist/HaruMimi` folder / `dist/HaruMimi` 폴더를 zip으로 묶어 첨부
+- [ ] Attach `dist/RHLingo-Setup-v…-win64.exe` (the in-app updater downloads this file) and the zipped `dist/RHLingo` folder (portable)
+      `dist/RHLingo-Setup-v…-win64.exe`(앱 안 업데이트가 이 파일을 받아요)와 `dist/RHLingo` 폴더 zip(설치 없이 쓰는 버전)을 첨부

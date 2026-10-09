@@ -1,4 +1,4 @@
-﻿HaruMimi — before you install
+﻿RH Lingo — before you install
 
 • The developer collects no personal data. Your voice is processed only on this PC.
 • Nothing is sent over the internet without your consent: online translation services and update checks are optional, and every download (speech models, offline translation model, updates) asks first and shows its size.

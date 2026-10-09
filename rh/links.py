@@ -13,3 +13,11 @@ DONATE_LINKS = [
     ("Patreon", ""),
     ("Toss / KakaoPay", ""),
 ]
+
+# 개발자 소개 탭의 링크: (표시 이름, URL). URL이 빈 항목은 보이지 않아요. (GitHub 링크는 저장소 소유자로 자동 표시)
+DEV_LINKS = [
+    ("X (Twitter)", ""),
+]
+
+# Special Thanks 목록 (닉네임 문자열). 비어 있으면 "첫 후원자를 기다려요" 문구가 보여요.
+SPECIAL_THANKS = []

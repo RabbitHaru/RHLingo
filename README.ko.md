@@ -1,4 +1,4 @@
-# 🐰 HaruMimi — by RabbitHaru
+# 🐰 RH Lingo — by RabbitHaru
 
 🇺🇸 English: [README.md](README.md)
 
@@ -8,7 +8,7 @@ VRChat 채팅박스용 음성 인식(STT) 번역기예요. 마이크로 말하�
 
 ## 사용법
 1. VRChat 액션 메뉴 → Options → OSC → **Enabled** 켜기
-2. `HaruMimi.exe` 실행 → 첫 실행 개인정보 안내 확인 → 번역할 언어(또는 "받아쓰기") 선택 → **시작**
+2. `RHLingo.exe` 실행 → 첫 실행 개인정보 안내 확인 → 번역할 언어(또는 "받아쓰기") 선택 → **시작**
 3. 처음에는 음성 모델을 받기 전에 크기를 알려드리고 허락을 물어봐요. 모델은 설정 → 음성 인식에서 직접 받고 지울 수도 있어요
 
 ## 특징
@@ -27,7 +27,7 @@ VRChat 채팅박스용 음성 인식(STT) 번역기예요. 마이크로 말하�
 ## 개발
 ```
 pip install -r requirements.txt
-python HaruMimi.py
+python RHLingo.py
 ```
 exe 빌드는 `build.bat`. 설정과 모델은 `%APPDATA%\RabbitHaru`에 저장돼요.
 업데이트 내역: [CHANGELOG.ko.md](CHANGELOG.ko.md). 릴리스 체크리스트: [RELEASING.md](RELEASING.md).

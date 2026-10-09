@@ -1,4 +1,4 @@
-# 🐰 HaruMimi — by RabbitHaru
+# 🐰 RH Lingo — by RabbitHaru
 
 🇰🇷 한국어: [README.ko.md](README.ko.md)
 
@@ -8,7 +8,7 @@ Speech-to-text and translator for the VRChat chatbox. Speak into your microphone
 
 ## Quick start
 1. In VRChat: Action Menu → Options → OSC → **Enabled**.
-2. Run `HaruMimi.exe`, read the first-run privacy notice, pick a language to translate to (or "Transcribe only"), then press **Start**.
+2. Run `RHLingo.exe`, read the first-run privacy notice, pick a language to translate to (or "Transcribe only"), then press **Start**.
 3. The first time, the app asks before downloading a speech model (it shows the size). You can also manage models in Settings → Speech recognition.
 
 ## Features
@@ -27,7 +27,7 @@ The developer collects no personal data. Online translation services and update 
 ## Development
 ```
 pip install -r requirements.txt
-python HaruMimi.py
+python RHLingo.py
 ```
 Build the exe with `build.bat`. Settings and models are stored in `%APPDATA%\RabbitHaru`.
 Release notes: [CHANGELOG.md](CHANGELOG.md). Release checklist: [RELEASING.md](RELEASING.md).

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import customtkinter as ctk
 
-from . import i18n, links, secret
+from . import i18n, links, secret, updater
 from .config import APP_NAME, APP_VERSION, DATA_DIR, load_config, log_error, save_config
 from .engine import (MODEL_SIZES_MB, MT_MODELS, Engine, MicMonitor, Output, TranslateError, calibrate_sensitivity,
                      delete_stt, download_mt, download_stt,
@@ -38,21 +38,17 @@ KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "google": "https://cloud.g
             "gemini": "https://aistudio.google.com/apikey"}
 
 
-def _version_key(v):
-    """'1.0.0-beta.1' 같은 표기도 비교 가능하게. 번호가 같으면 정식(1)이 베타(0)보다 새 버전."""
-    import re
-    nums = tuple(int(x) for x in re.findall(r"\d+", v.split("-")[0])[:3])
-    return nums + (0,) * (3 - len(nums)) + (0 if "-" in v else 1,)
+_version_key = updater.version_key
 
 
 def resource_path(name):
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
-    return base / name
+    return base / name if (base / name).exists() else base / "installer" / name
 
 
 def set_icon(win):
     """창/작업표시줄 아이콘. customtkinter 가 200ms 뒤 기본 아이콘으로 덮어써서 그 뒤에 다시 지정."""
-    ico = resource_path("HaruMimi.ico")
+    ico = resource_path("RHLingo.ico")
     if not ico.exists():
         return
 
@@ -249,15 +245,25 @@ class MainWindow(ctk.CTk):
 
         bottom = ctk.CTkFrame(side, fg_color="transparent")
         bottom.pack(side="bottom", fill="x", padx=20, pady=(0, 20))
-        soft_button(bottom, "⚙  " + T("settings"), self.open_settings).pack(side="left", expand=True, fill="x", padx=(0, 6))
-        soft_button(bottom, "♥  " + T("about"), lambda: self.open_info("tab_new")).pack(side="left", expand=True, fill="x", padx=(6, 0))
+        for i, (label, cmd) in enumerate((("⚙ " + T("settings"), self.open_settings),
+                                          ("RH " + T("dev_menu"), lambda: self.open_info("tab_dev")),
+                                          ("♥ " + T("about"), lambda: self.open_info("tab_new")))):
+            b = soft_button(bottom, label, cmd, width=10)
+            b.configure(font=f(12, True))
+            b.pack(side="left", expand=True, fill="x", padx=(0 if i == 0 else 3, 0 if i == 2 else 3))
 
-        ctk.CTkLabel(side, text="🐰 " + T("title"), font=f(24, True), text_color=TEXT, anchor="w").pack(
-            fill="x", padx=24, pady=(24, 0))
+        brand = ctk.CTkFrame(side, fg_color="transparent")
+        brand.pack(fill="x", padx=24, pady=(22, 0))
+        try:
+            self._logo_s = tk.PhotoImage(file=str(resource_path("RHLingo_logo_s.png")))
+            ctk.CTkLabel(brand, image=self._logo_s, text="").pack(side="left", padx=(0, 10))
+        except Exception:
+            pass
+        ctk.CTkLabel(brand, text=T("title"), font=f(24, True), text_color=TEXT, anchor="w").pack(side="left")
         ctk.CTkLabel(side, text=T("tagline"), font=f(11), text_color=SUB, anchor="w").pack(fill="x", padx=26)
         self.update_lbl = ctk.CTkLabel(side, text="", font=f(11, True), text_color=PURPLE, cursor="hand2", anchor="w")
         self.update_lbl.pack(fill="x", padx=26)
-        self.update_lbl.bind("<Button-1>", lambda e: self.update_info and webbrowser.open(self.update_info[1]))
+        self.update_lbl.bind("<Button-1>", lambda e: self.start_update())
         self._show_update()
 
         self.status = ctk.CTkLabel(side, text="", font=f(12, True), text_color=SUB, fg_color=FIELD,
@@ -443,7 +449,31 @@ class MainWindow(ctk.CTk):
         elif kind == "error":
             self.add_bubble(f"{T('err')}: {ev[1]}", kind="err")
         elif kind == "update":
-            self.update_info = (ev[1], ev[2])
+            self.update_info = ev[1]
+            self._show_update()
+            if ev[2]:
+                ev[2](T("up_found").format(v=ev[1]["version"]))
+        elif kind == "update_none":
+            if ev[1]:
+                ev[1](T("up_latest"))
+        elif kind == "update_fail":
+            if ev[1]:
+                ev[1](T("up_fail"))
+        elif kind == "update_prog":
+            self.update_lbl.configure(text=f"⬇ {T('up_progress')} {ev[1]}%")
+        elif kind == "update_run":
+            self.update_lbl.configure(text="✨ " + T("up_installing"))
+            self.update()
+            try:
+                updater.launch_installer(ev[1])
+            except Exception:
+                self.add_bubble(f"{T('err')}: {T('up_fail')}", kind="err")
+                self._show_update()
+                return
+            self.on_close()
+            os._exit(0)
+        elif kind == "update_dl_fail":
+            self.add_bubble(f"{T('err')}: {T(ev[1])}", kind="err")
             self._show_update()
 
     def _apply_state(self, state, pct=None, mtp=None, stp=None):
@@ -566,22 +596,56 @@ class MainWindow(ctk.CTk):
     # -- 업데이트 확인 (동의한 경우에만) ------------------------------------
     def check_update_if_allowed(self):
         if links.GITHUB_REPO and self.cfg["consent_update"]:
-            threading.Thread(target=self._check_update, daemon=True).start()
+            self.check_update()
 
-    def _check_update(self):
-        try:
-            url = f"https://api.github.com/repos/{links.GITHUB_REPO}/releases/latest"
-            req = urllib.request.Request(url, headers={"User-Agent": "HaruMimi"})
-            data = json.loads(urllib.request.urlopen(req, timeout=8).read().decode("utf-8"))
-            tag = data.get("tag_name", "").lstrip("v")
-            if tag and _version_key(tag) > _version_key(APP_VERSION):
-                self.events.put(("update", tag, data.get("html_url", "")))
-        except Exception:
-            pass
+    def check_update(self, on_done=None):
+        """새 버전 확인. 시작 시(동의한 경우)나 사용자가 버튼을 눌렀을 때만 불러요. 결과 문구는 on_done 으로."""
+        def run():
+            try:
+                info = updater.find_update(APP_VERSION, links.GITHUB_REPO)
+                self.events.put(("update", info, on_done) if info else ("update_none", on_done))
+            except Exception:
+                self.events.put(("update_fail", on_done))
+        threading.Thread(target=run, daemon=True).start()
+
+    def start_update(self):
+        info = self.update_info
+        if not info:
+            return
+        asset = info.get("installer")
+        if not (asset and asset.get("sha256") and updater.is_installed()):
+            webbrowser.open(info["page"])  # 설치형이 아니거나 설치 파일이 없으면 릴리스 페이지로
+            return
+        if getattr(self, "_updating", False):
+            return
+        mb = max(1, round(asset["size"] / 1048576))
+        if not ask(self, T("up_ask_title").format(v=info["version"]), T("up_ask_body").format(mb=mb),
+                   T("up_yes"), T("dl_no")):
+            return
+        self._updating = True
+
+        def run():
+            try:
+                last = [-1]
+
+                def prog(done, total):
+                    pct = int(done * 100 / total) if total else 0
+                    if pct != last[0]:
+                        last[0] = pct
+                        self.events.put(("update_prog", pct))
+                path = updater.download_installer(asset, prog)
+                self.events.put(("update_run", path))
+            except ValueError:
+                self.events.put(("update_dl_fail", "up_bad_file"))
+            except Exception:
+                self.events.put(("update_dl_fail", "up_fail"))
+            finally:
+                self._updating = False
+        threading.Thread(target=run, daemon=True).start()
 
     def _show_update(self):
         if self.update_info:
-            self.update_lbl.configure(text=f"✨ {T('update_avail')}: v{self.update_info[0]}")
+            self.update_lbl.configure(text=f"✨ {T('update_avail')}: v{self.update_info['version']}")
         else:
             self.update_lbl.configure(text="")
 
@@ -784,9 +848,21 @@ class SettingsWindow(ctk.CTkToplevel):
         self.section(T("sec_privacy"))
         self.switch("consent_translate", T("sw_translate"), cb=lambda v: self.app.refresh_target())
         self.switch("consent_update", T("sw_update"), cb=lambda v: v and self.app.check_update_if_allowed())
+        ucard = self.card()
+        self.up_lbl = ctk.CTkLabel(ucard, text=f"{T('version')} {APP_VERSION}", font=f(12), text_color=SUB, anchor="w")
+        self.up_lbl.pack(fill="x", padx=16, pady=(12, 0))
+        soft_button(ucard, "⟳  " + T("up_check"), self._check_now).pack(fill="x", padx=14, pady=(8, 14))
         pcard = self.card()
         soft_button(pcard, T("policy"), lambda: self.app.open_info("tab_privacy")).pack(fill="x", padx=14, pady=(14, 6))
         pill_button(pcard, T("delete_data"), self._delete_data, PINK, PINK_H, height=34).pack(fill="x", padx=14, pady=(0, 14))
+
+    def _check_now(self):
+        self.up_lbl.configure(text=T("up_checking"), text_color=SUB)
+
+        def done(msg):
+            if self.winfo_exists():
+                self.up_lbl.configure(text=msg, text_color=PURPLE)
+        self.app.check_update(done)
 
     # -- 위젯 도우미 ------------------------------------------------------
     def section(self, text):
@@ -1137,9 +1213,11 @@ class InfoWindow(ctk.CTkToplevel):
                               segmented_button_selected_hover_color=PURPLE_H, segmented_button_unselected_color=FIELD,
                               segmented_button_unselected_hover_color=FIELD_H, text_color=TEXT)
         tabs.pack(fill="both", expand=True, padx=14, pady=14)
-        names = {k: T(k) for k in ("tab_new", "tab_fb", "tab_support", "tab_privacy")}
+        self.tabs = tabs
+        names = {k: T(k) for k in ("tab_dev", "tab_new", "tab_fb", "tab_support", "tab_privacy")}
         for n in names.values():
             tabs.add(n)
+        self._developer(tabs.tab(names["tab_dev"]))
         self._text(tabs.tab(names["tab_new"]), f"{T('version')} {APP_VERSION}\n\n" + self._read(f"CHANGELOG.{i18n._lang}.md", "CHANGELOG.md"))
         self._feedback(tabs.tab(names["tab_fb"]))
         self._support(tabs.tab(names["tab_support"]))
@@ -1184,6 +1262,50 @@ class InfoWindow(ctk.CTkToplevel):
         env = f"\n\n---\nv{APP_VERSION} · Windows {platform.version()} · model {self.app.cfg['model']}"
         q = urllib.parse.urlencode({"title": msg.split("\n")[0][:60] or "Feedback", "body": (msg + env)[:1500]})
         webbrowser.open(f"https://github.com/{links.GITHUB_REPO}/issues/new?{q}")
+
+    def _developer(self, tab):
+        body = ctk.CTkScrollableFrame(tab, fg_color="transparent")
+        body.pack(fill="both", expand=True)
+        hero = ctk.CTkFrame(body, fg_color=PURPLE, corner_radius=26)
+        hero.pack(fill="x", padx=4, pady=(4, 10))
+        try:
+            self._logo = tk.PhotoImage(file=str(resource_path("RHLingo_logo.png")))
+            ctk.CTkLabel(hero, image=self._logo, text="").pack(side="left", padx=(22, 14), pady=18)
+        except Exception:
+            pass
+        col = ctk.CTkFrame(hero, fg_color="transparent")
+        col.pack(side="left", fill="x", expand=True, pady=16)
+        ctk.CTkLabel(col, text="RabbitHaru", font=f(24, True), text_color="#FFFFFF", anchor="w").pack(fill="x")
+        ctk.CTkLabel(col, text=T("dev_role"), font=f(12), text_color="#E6E1FF", anchor="w").pack(fill="x")
+        ctk.CTkLabel(col, text=f"{APP_NAME}  ·  v{APP_VERSION}", font=f(11), text_color="#CFC8FF", anchor="w").pack(fill="x", pady=(4, 0))
+
+        card = ctk.CTkFrame(body, fg_color=FIELD, corner_radius=20)
+        card.pack(fill="x", padx=4, pady=5)
+        ctk.CTkLabel(card, text="💌  " + T("dev_msg_title"), font=f(13, True), text_color=TEXT, anchor="w").pack(fill="x", padx=18, pady=(14, 2))
+        ctk.CTkLabel(card, text=T("dev_msg"), font=f(12), text_color=TEXT, anchor="w", justify="left",
+                     wraplength=640).pack(fill="x", padx=18, pady=(0, 14))
+
+        shown = [(n, u) for n, u in links.DEV_LINKS if u]
+        if links.GITHUB_REPO:
+            shown.insert(0, ("GitHub", f"https://github.com/{links.GITHUB_REPO.split('/')[0]}"))
+        row = ctk.CTkFrame(body, fg_color="transparent")
+        row.pack(fill="x", padx=4, pady=5)
+        for n, u in shown:
+            pill_button(row, n, lambda u=u: webbrowser.open(u), height=38).pack(side="left", padx=(0, 8))
+        if not any(n.startswith(("X", "Twitter")) for n, _ in shown):
+            ctk.CTkLabel(row, text="X (Twitter): " + T("dev_soon"), font=f(11), text_color=SUB).pack(side="left", padx=6)
+
+        thanks = ctk.CTkFrame(body, fg_color=FIELD, corner_radius=20)
+        thanks.pack(fill="x", padx=4, pady=5)
+        ctk.CTkLabel(thanks, text="🌸  " + T("dev_thanks"), font=f(13, True), text_color=TEXT, anchor="w").pack(fill="x", padx=18, pady=(14, 4))
+        people = [p for p in links.SPECIAL_THANKS if p]
+        if people:
+            ctk.CTkLabel(thanks, text="  ·  ".join(people), font=f(12), text_color=TEXT, anchor="w", justify="left",
+                         wraplength=640).pack(fill="x", padx=18, pady=(0, 8))
+        else:
+            ctk.CTkLabel(thanks, text=T("dev_thanks_empty"), font=f(12), text_color=SUB, anchor="w").pack(fill="x", padx=18, pady=(0, 8))
+        ctk.CTkLabel(thanks, text=T("dev_oss"), font=f(11), text_color=SUB, anchor="w", justify="left",
+                     wraplength=640).pack(fill="x", padx=18, pady=(0, 14))
 
     def _support(self, tab):
         ctk.CTkLabel(tab, text=T("support_text"), font=f(13), text_color=TEXT, wraplength=620,

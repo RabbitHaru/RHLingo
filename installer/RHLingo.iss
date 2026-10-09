@@ -1,5 +1,5 @@
-﻿; HaruMimi 설치 마법사 (Inno Setup 6). 빌드: build.bat  (ISCC /DAppVersion=... /DAppVersionNum=... installer\HaruMimi.iss)
-#define AppName "HaruMimi"
+﻿; RH Lingo 설치 마법사 (Inno Setup 6). 빌드: build.bat  (ISCC /DAppVersion=... /DAppVersionNum=... installer\RHLingo.iss)
+#define AppName "RH Lingo"
 #ifndef AppVersion
   #define AppVersion "1.0.0-beta.1"
 #endif
@@ -8,7 +8,7 @@
 #endif
 #define AppPublisher "RabbitHaru"
 #define AppURL "https://github.com/RabbitHaru/HaruMimi"
-#define AppExe "HaruMimi.exe"
+#define AppExe "RHLingo.exe"
 
 [Setup]
 ; AppId 는 앱을 식별하는 고유 값입니다. 절대 바꾸지 마세요 (바꾸면 업데이트가 아니라 별도 설치로 인식됨).
@@ -32,7 +32,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 Compression=lzma2/max
 SolidCompression=yes
-SetupIconFile=HaruMimi.ico
+SetupIconFile=RHLingo.ico
 DisableWelcomePage=no
 ; 둥근 보라색 카드 이미지(밝은/어두운 테마, 배율별) + Windows 11 스타일(둥근 버튼/입력창)
 WizardStyle=modern dynamic windows11 excludelightbuttons
@@ -41,7 +41,7 @@ WizardImageFileDynamicDark=wiz_side_dark_100.bmp,wiz_side_dark_125.bmp,wiz_side_
 WizardSmallImageFile=wiz_small_light_100.bmp,wiz_small_light_125.bmp,wiz_small_light_150.bmp,wiz_small_light_200.bmp
 WizardSmallImageFileDynamicDark=wiz_small_dark_100.bmp,wiz_small_dark_125.bmp,wiz_small_dark_150.bmp,wiz_small_dark_200.bmp
 OutputDir=..\dist
-OutputBaseFilename=HaruMimi-Setup-v{#AppVersion}-win64
+OutputBaseFilename=RHLingo-Setup-v{#AppVersion}-win64
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExe}
 LicenseFile=..\LICENSE
@@ -55,15 +55,15 @@ Name: "english"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "info.en.
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"; InfoBeforeFile: "info.ja.txt"
 
 [CustomMessages]
-english.DeleteUserData=Also delete your HaruMimi settings and downloaded models stored in your user folder?%n%nChoose No to keep them for a future reinstall.
-korean.DeleteUserData=내 PC에 저장된 HaruMimi 설정과 다운로드한 모델도 함께 삭제할까요?%n%n"아니오"를 누르면 나중에 다시 설치할 때 쓸 수 있도록 남겨 둬요.
-japanese.DeleteUserData=ユーザーフォルダに保存されているHaruMimiの設定とダウンロードしたモデルも一緒に削除しますか?%n%n「いいえ」を選ぶと、再インストール時に使えるよう残します。
+english.DeleteUserData=Also delete your RH Lingo settings and downloaded models stored in your user folder?%n%nChoose No to keep them for a future reinstall.
+korean.DeleteUserData=내 PC에 저장된 RH Lingo 설정과 다운로드한 모델도 함께 삭제할까요?%n%n"아니오"를 누르면 나중에 다시 설치할 때 쓸 수 있도록 남겨 둬요.
+japanese.DeleteUserData=ユーザーフォルダに保存されているRH Lingoの設定とダウンロードしたモデルも一緒に削除しますか?%n%n「いいえ」を選ぶと、再インストール時に使えるよう残します。
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\dist\HaruMimi\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\RHLingo\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

@@ -5,7 +5,7 @@ import os
 import time
 from pathlib import Path
 
-APP_NAME = "HaruMimi"  # 앱 이름은 여기와 i18n.py 의 title/tagline 에서만 바꾸면 됩니다
+APP_NAME = "RH Lingo"  # 앱 이름은 여기와 i18n.py 의 title/tagline 에서만 바꾸면 됩니다
 APP_VERSION = "1.0.0-beta.1"
 
 DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "RabbitHaru"

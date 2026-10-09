@@ -53,7 +53,7 @@ function SideImage([int]$w, [int]$h, [single]$k, [bool]$dark, [string]$path) {
     $f1 = New-Object System.Drawing.Font "Malgun Gothic", (17 * $k), ([System.Drawing.FontStyle]::Bold), ([System.Drawing.GraphicsUnit]::Pixel)
     $f2 = New-Object System.Drawing.Font "Malgun Gothic", (11 * $k), ([System.Drawing.FontStyle]::Regular), ([System.Drawing.GraphicsUnit]::Pixel)
     $wb = New-Object System.Drawing.SolidBrush (Col "#FFFFFF"); $wb2 = New-Object System.Drawing.SolidBrush (Col "#FFFFFF" 215)
-    $g.DrawString("HaruMimi", $f1, $wb, (New-Object System.Drawing.RectangleF 0, ($h * 0.64), $w, (28 * $k)), $fmt)
+    $g.DrawString("RH Lingo", $f1, $wb, (New-Object System.Drawing.RectangleF 0, ($h * 0.64), $w, (28 * $k)), $fmt)
     $g.DrawString("by RabbitHaru", $f2, $wb2, (New-Object System.Drawing.RectangleF 0, ($h * 0.64 + 26 * $k), $w, (18 * $k)), $fmt)
     $g.DrawString("STT  ·  Translate", $f2, $wb2, (New-Object System.Drawing.RectangleF 0, ($h * 0.64 + 52 * $k), $w, (18 * $k)), $fmt)
     $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp); $g.Dispose(); $bmp.Dispose()
@@ -91,9 +91,10 @@ foreach ($n in $sizes) {
     DrawBunny $g ($n / 2) ($n * 0.60) ($n * 0.27)
     $ms = New-Object System.IO.MemoryStream; $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); $pngs += , $ms.ToArray()
     $g.Dispose(); $bmp.Dispose()
-    if ($n -eq 256) { [IO.File]::WriteAllBytes((Join-Path $out "icon_preview.png"), $pngs[-1]) }
+    if ($n -eq 48) { [IO.File]::WriteAllBytes((Join-Path $out "RHLingo_logo_s.png"), $pngs[-1]) }
+    if ($n -eq 64) { [IO.File]::WriteAllBytes((Join-Path $out "RHLingo_logo.png"), $pngs[-1]) }
 }
-$fs = [IO.File]::Create((Join-Path $out "HaruMimi.ico")); $bw = New-Object IO.BinaryWriter $fs
+$fs = [IO.File]::Create((Join-Path $out "RHLingo.ico")); $bw = New-Object IO.BinaryWriter $fs
 $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]$sizes.Count)
 $off = 6 + 16 * $sizes.Count
 for ($i = 0; $i -lt $sizes.Count; $i++) {
@@ -103,4 +104,4 @@ for ($i = 0; $i -lt $sizes.Count; $i++) {
 }
 foreach ($p in $pngs) { $bw.Write($p) }
 $bw.Close(); $fs.Close()
-"아이콘 생성: HaruMimi.ico"
+"아이콘 생성: RHLingo.ico"

@@ -462,7 +462,7 @@ class TranslateError(Exception):
 
 def _http_json(url, body=None, headers=None, timeout=8):
     data = None if body is None else json.dumps(body).encode("utf-8")
-    h = {"User-Agent": "HaruMimi", **(headers or {})}
+    h = {"User-Agent": "RHLingo", **(headers or {})}
     req = urllib.request.Request(url, data=data, headers=h, method="GET" if body is None else "POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -561,7 +561,7 @@ def download_mt(tier="standard", progress=None, base_url=None, target_dir=None):
     try:
         for name, (digest, _) in spec["files"].items():
             h = hashlib.sha256()
-            req = urllib.request.Request((base_url or spec["base"]) + name, headers={"User-Agent": "HaruMimi"})
+            req = urllib.request.Request((base_url or spec["base"]) + name, headers={"User-Agent": "RHLingo"})
             with urllib.request.urlopen(req, timeout=30) as r, open(tmp / name, "wb") as out:
                 while True:
                     chunk = r.read(1 << 20)
