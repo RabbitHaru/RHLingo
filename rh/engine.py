@@ -896,6 +896,8 @@ class Engine:
     """start() 하면 모델 준비 -> 마이크 수신 -> 인식 -> 번역 -> 전송.
     UI와는 events 큐(("result"|"partial"|"error"|"info", ...))로만 통신합니다."""
 
+    busy = False  # 인식 중이면 True (측정 도구가 '다 끝날 때까지' 기다릴 때 사용)
+
     def __init__(self, cfg, output, events):
         self.cfg, self.out, self.events = cfg, output, events
         self.running = False
@@ -1080,11 +1082,14 @@ class Engine:
                 except Exception as e:
                     log_error(f"partial: {e!r}")
                 continue
+            self.busy = True
             try:
                 self._process(audio)
             except Exception as e:
                 log_error(f"process: {type(e).__name__}")
                 self.events.put(("error", str(e)))
+            finally:
+                self.busy = False
 
     def _transcribe(self, audio):
         c = self.cfg

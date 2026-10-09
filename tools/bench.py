@@ -226,11 +226,13 @@ def run_engine(cfg, model, stream, realtime=False, speech_end_idx=None, settle=0
     else:
         for i in range(0, len(stream), step):
             eng.audio_q.put(stream[i:i + step])
-        while time.perf_counter() - t0 < 6 and (not eng.audio_q.empty() or not eng.utt_q.empty()):
-            time.sleep(0.02)
-    last_n, last_t = 0, time.perf_counter()
-    while time.perf_counter() - last_t < settle and time.perf_counter() - t0 < limit + len(stream) / SR:
-        if ev.qsize() != last_n:
+    # 소리 처리와 인식이 모두 끝날 때까지 기다림 (느린 PC/모델에서 결과가 잘리지 않게)
+    deadline = t0 + max(30.0, 4 * len(stream) / SR)
+    while time.perf_counter() < deadline and (not eng.audio_q.empty() or not eng.utt_q.empty() or eng.busy):
+        time.sleep(0.02)
+    last_n, last_t = ev.qsize(), time.perf_counter()
+    while time.perf_counter() - last_t < settle and time.perf_counter() < deadline:
+        if ev.qsize() != last_n or eng.busy:
             last_n, last_t = ev.qsize(), time.perf_counter()
         time.sleep(0.03)
     eng.running = False
@@ -422,6 +424,53 @@ def stage_stt(seeds=(1, 2)):
     RESULT["stt"] = {"model": E.model_name(cfg), "conditions": out}
 
 
+# ───────────────────────────── 3b) 음성 인식 모델 비교 (tiny/base/small/medium/large-v3-turbo) ─────────────────────────────
+def stage_models():
+    """설치돼 있는(또는 --stt-dir 폴더에 있는) 모델 전부를 같은 조건으로 비교. 받지 않아요."""
+    import gc
+    from rh import engine as E
+    real = E.MODEL_DIR
+    extra = Path(sys.argv[sys.argv.index("--stt-dir") + 1]) if "--stt-dir" in sys.argv else None
+    out = {}
+    for name in ("tiny", "base", "small", "medium", "large-v3-turbo"):
+        found = None
+        for d in (real, extra):
+            if d is not None:
+                E.MODEL_DIR = d
+                if E.model_cached(name):
+                    found = d; break
+        if found is None:
+            print(name, "not installed - skipped", flush=True); continue
+        E.release_model(); gc.collect(); time.sleep(1)
+        cfg = base_cfg(model=name)
+        r0 = rss_mb(); t = time.perf_counter()
+        model, dev = E.get_model(cfg)
+        load = time.perf_counter() - t
+        time.sleep(8); ram = rss_mb() - r0
+        ts = []
+        for i in range(8):
+            sig = load_clip(f"ko{i}"); E.transcribe_adaptive(model, sig, "ko")
+            for _ in range(4):
+                t0 = time.perf_counter(); E.transcribe_adaptive(model, sig, "ko"); ts.append(time.perf_counter() - t0)
+        scores = {c[0]: [] for c in CONDS}
+        for k, (lang, ref) in SPEECH.items():
+            sig = load_clip(k)
+            for cond in CONDS:
+                globals()["rng"] = np.random.default_rng(zlib.crc32((k + cond[0]).encode()))  # 클립·조건마다 다른(하지만 항상 같은) 소음
+                mixed, lead, tail = build(sig, cond)
+                stream = np.concatenate([lead, mixed, np.resize(np.concatenate([tail, lead]), int(1.4 * SR))]).astype(np.float32)
+                res, _ = run_engine(dict(cfg, source=lang), model, stream, settle=0.5)
+                scores[cond[0]].append(cer(ref, " ".join(r[0] for r in res)))
+        per = {k: round(100 * float(np.mean(v)), 1) for k, v in scores.items()}
+        audible = [v for k, v in per.items() if not k.startswith("quiet")]
+        out[name] = {"disk_mb": E.MODEL_SIZES_MB[name], "ram_mb": round(ram), "load_s": round(load, 2), "device": dev,
+                     "recog_ms_median": round(1000 * st.median(ts)), "CER_by_condition": per,
+                     "CER_mean_audible_pct": round(float(np.mean(audible)), 1)}
+        print(name, json.dumps(out[name], ensure_ascii=False), flush=True)
+    E.MODEL_DIR = real
+    RESULT["models"] = out
+
+
 # ───────────────────────────── 4) 번역 품질 ─────────────────────────────
 def stage_translate():
     from rh import engine as E
@@ -432,9 +481,15 @@ def stage_translate():
         if not E.mt_cached(tier):
             continue
         cfg = base_cfg(mt_quality=tier)
-        E.release_mt()
+        E.release_mt(); time.sleep(1)
+        r0 = rss_mb(); t = time.perf_counter()
         E.translate_text(cfg, "안녕하세요", "ko", "en")
-        res = {}
+        load_s, ram = time.perf_counter() - t, rss_mb() - r0
+        lat = []
+        for _ in range(3):
+            for p in PARALLEL:
+                t = time.perf_counter(); E.translate_text(cfg, p[0], "ko", "ja"); lat.append(time.perf_counter() - t)
+        res = {"_cost": {"load_s": round(load_s, 2), "ram_mb": round(ram), "ko_to_ja_median_s": round(st.median(lat), 3), "disk_mb": E.MT_MODELS[tier]["size_mb"]}}
         for src, tgt in (("ko", "en"), ("ko", "ja"), ("en", "ko"), ("en", "ja"), ("ja", "ko"), ("ja", "en")):
             scs = []; ex = None
             for p in PARALLEL:
@@ -454,6 +509,8 @@ def main():
         i = args.index("--mt-dir"); mt_dir = Path(args[i + 1]); del args[i:i + 2]
     download = "--download-mt" in args
     args = [a for a in args if a not in ("--download-mt", "--download-stt")]
+    if "--stt-dir" in args:
+        i = args.index("--stt-dir"); del args[i:i + 2]
     stages = args or ["footprint", "speed", "stt", "translate"]
     if OUT.exists():
         try:

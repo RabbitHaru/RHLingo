@@ -2,7 +2,7 @@
 
 🇺🇸 English: [README.md](README.md)
 
-> ⚠️ **베타** (v1.0.0-beta.2): 기본 기능은 확인했지만 실제 사용 후기를 보내 주시면 큰 도움이 돼요. [이슈 남기기](https://github.com/RabbitHaru/RHLingo/issues)
+> ⚠️ **베타** (v1.0.0-beta.3): 기본 기능은 확인했지만 실제 사용 후기를 보내 주시면 큰 도움이 돼요. [이슈 남기기](https://github.com/RabbitHaru/RHLingo/issues)
 
 VRChat 채팅박스용 음성 인식(STT) 번역기예요. 마이크로 말하면 인식 → (번역) → VRChat 채팅박스(OSC)로 자동 전송해요. 한국어 / 日本語 / English. **정확성 · 신속성 · 가벼움**을 최우선으로 만들었어요.
 

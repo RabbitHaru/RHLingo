@@ -3,7 +3,7 @@
   "cpu_threads": 16,
   "python": "3.12.10"
  },
- "app_version": "1.0.0-beta.1",
+ "app_version": "1.0.0-beta.2",
  "footprint": {
   "installer_mb": 66.6,
   "install_folder_mb": 251,
@@ -83,9 +83,9 @@
   "model": "small",
   "conditions": {
    "clean": {
-    "CER_ko_pct": 4.2,
-    "CER_en_pct": 1.7,
-    "CER_all_pct": 2.9,
+    "CER_ko_pct": 3.2,
+    "CER_en_pct": 0.5,
+    "CER_all_pct": 1.9,
     "detected_pct": 100
    },
    "quiet voice (x0.1)": {
@@ -95,33 +95,39 @@
     "detected_pct": 0
    },
    "fan, SNR 10 dB": {
-    "CER_ko_pct": 16.4,
-    "CER_en_pct": 2.1,
-    "CER_all_pct": 9.3,
+    "CER_ko_pct": 13.1,
+    "CER_en_pct": 1.0,
+    "CER_all_pct": 7.0,
     "detected_pct": 100
    },
    "mains hum, SNR 5 dB": {
-    "CER_ko_pct": 7.2,
-    "CER_en_pct": 3.3,
-    "CER_all_pct": 5.3,
-    "detected_pct": 97
+    "CER_ko_pct": 2.6,
+    "CER_en_pct": 0.5,
+    "CER_all_pct": 1.5,
+    "detected_pct": 100
    },
    "keyboard, SNR 3 dB": {
-    "CER_ko_pct": 15.4,
+    "CER_ko_pct": 14.8,
     "CER_en_pct": 25.5,
-    "CER_all_pct": 20.4,
+    "CER_all_pct": 20.2,
     "detected_pct": 81
    },
    "background voices, SNR 8 dB": {
-    "CER_ko_pct": 11.7,
-    "CER_en_pct": 38.2,
-    "CER_all_pct": 25.0,
-    "detected_pct": 94
+    "CER_ko_pct": 9.1,
+    "CER_en_pct": 3.2,
+    "CER_all_pct": 6.1,
+    "detected_pct": 100
    }
   }
  },
  "translate": {
   "standard": {
+   "_cost": {
+    "load_s": 0.84,
+    "ram_mb": 513,
+    "ko_to_ja_median_s": 0.489,
+    "disk_mb": 494
+   },
    "ko->en": {
     "chrF": 37.2,
     "example": [
@@ -170,6 +176,144 @@
      "Hello, this is my first time here and the world is really beautiful."
     ]
    }
+  },
+  "high": {
+   "_cost": {
+    "load_s": 1.74,
+    "ram_mb": 1236,
+    "ko_to_ja_median_s": 0.805,
+    "disk_mb": 1253
+   },
+   "ko->en": {
+    "chrF": 44.2,
+    "example": [
+     "안녕하세요, 오늘 처음 왔는데 월드가 정말 예뻐요.",
+     "This is my first time here today and the world is really beautiful.",
+     "Hello, this is my first time here and the world is really beautiful."
+    ]
+   },
+   "ko->ja": {
+    "chrF": 30.5,
+    "example": [
+     "안녕하세요, 오늘 처음 왔는데 월드가 정말 예뻐요.",
+     "初めて来たけど、ワールドはすごい。",
+     "こんにちは、今日初めて来たんですが、このワールドはとても綺麗ですね。"
+    ]
+   },
+   "en->ko": {
+    "chrF": 24.7,
+    "example": [
+     "Hello, this is my first time here and the world is really beautiful.",
+     "안녕하세요, 이곳에 처음으로 와서 월드 정말 아름답습니다.",
+     "안녕하세요, 오늘 처음 왔는데 월드가 정말 예뻐요."
+    ]
+   },
+   "en->ja": {
+    "chrF": 37.8,
+    "example": [
+     "Hello, this is my first time here and the world is really beautiful.",
+     "こんにちは、ここで初めてですし、ワールドは本当に美しいです。",
+     "こんにちは、今日初めて来たんですが、このワールドはとても綺麗ですね。"
+    ]
+   },
+   "ja->ko": {
+    "chrF": 38.2,
+    "example": [
+     "こんにちは、今日初めて来たんですが、このワールドはとても綺麗ですね。",
+     "안녕하세요, 오늘 처음 왔는데 이곳은 정말 아름답습니다.",
+     "안녕하세요, 오늘 처음 왔는데 월드가 정말 예뻐요."
+    ]
+   },
+   "ja->en": {
+    "chrF": 44.3,
+    "example": [
+     "こんにちは、今日初めて来たんですが、このワールドはとても綺麗ですね。",
+     "This is my first time here today, but this world is very beautiful.",
+     "Hello, this is my first time here and the world is really beautiful."
+    ]
+   }
+  }
+ },
+ "models": {
+  "tiny": {
+   "disk_mb": 75,
+   "ram_mb": 109,
+   "load_s": 1.28,
+   "device": "cpu",
+   "recog_ms_median": 90,
+   "CER_by_condition": {
+    "clean": 7.8,
+    "quiet voice (x0.1)": 100.0,
+    "fan, SNR 10 dB": 28.1,
+    "mains hum, SNR 5 dB": 14.9,
+    "keyboard, SNR 3 dB": 33.7,
+    "background voices, SNR 8 dB": 33.0
+   },
+   "CER_mean_audible_pct": 23.5
+  },
+  "base": {
+   "disk_mb": 145,
+   "ram_mb": 41,
+   "load_s": 3.05,
+   "device": "cpu",
+   "recog_ms_median": 138,
+   "CER_by_condition": {
+    "clean": 8.0,
+    "quiet voice (x0.1)": 100.0,
+    "fan, SNR 10 dB": 19.1,
+    "mains hum, SNR 5 dB": 5.2,
+    "keyboard, SNR 3 dB": 30.5,
+    "background voices, SNR 8 dB": 21.3
+   },
+   "CER_mean_audible_pct": 16.8
+  },
+  "small": {
+   "disk_mb": 480,
+   "ram_mb": 177,
+   "load_s": 2.04,
+   "device": "cpu",
+   "recog_ms_median": 439,
+   "CER_by_condition": {
+    "clean": 1.2,
+    "quiet voice (x0.1)": 100.0,
+    "fan, SNR 10 dB": 14.6,
+    "mains hum, SNR 5 dB": 0.2,
+    "keyboard, SNR 3 dB": 26.8,
+    "background voices, SNR 8 dB": 7.1
+   },
+   "CER_mean_audible_pct": 10.0
+  },
+  "medium": {
+   "disk_mb": 1500,
+   "ram_mb": 520,
+   "load_s": 11.37,
+   "device": "cpu",
+   "recog_ms_median": 1178,
+   "CER_by_condition": {
+    "clean": 0.2,
+    "quiet voice (x0.1)": 100.0,
+    "fan, SNR 10 dB": 3.6,
+    "mains hum, SNR 5 dB": 0.2,
+    "keyboard, SNR 3 dB": 25.2,
+    "background voices, SNR 8 dB": 6.4
+   },
+   "CER_mean_audible_pct": 7.1
+  },
+  "large-v3-turbo": {
+   "disk_mb": 1600,
+   "ram_mb": 61,
+   "load_s": 7.54,
+   "device": "cpu",
+   "recog_ms_median": 1098,
+   "CER_by_condition": {
+    "clean": 3.8,
+    "quiet voice (x0.1)": 100.0,
+    "fan, SNR 10 dB": 8.1,
+    "mains hum, SNR 5 dB": 3.0,
+    "keyboard, SNR 3 dB": 27.1,
+    "background voices, SNR 8 dB": 5.6
+   },
+   "CER_mean_audible_pct": 9.5
   }
  }
 }

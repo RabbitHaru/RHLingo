@@ -2,7 +2,7 @@
 
 🇰🇷 한국어: [CHANGELOG.ko.md](CHANGELOG.ko.md)
 
-## Unreleased
+## v1.0.0-beta.3 — Short calls, better accuracy, new Models page
 
 ### Added
 - **Pause / resume hotkey** (Settings → General, off by default): a global shortcut that works while VRChat is in front, with a short beep so you know the state. It tells you if another program already uses the key.
@@ -19,6 +19,7 @@
 - **More accurate speech recognition by default**: the search width is now chosen from your CPU (5 on 8+ cores, 3 on 4+, 1 otherwise). In a noisy synthetic test the error rate fell from 26.9% to 18.2% with almost no extra time on an 8-core PC.
 - **Settings reorganized**: new *Models* page with one row per model (choose, size, status, download/delete in a single button) for both speech and offline translation; *Microphone* page with auto-tune inside the sensitivity card; readable left menu with icons; API key box only for services that need a key.
 - Wider main panel so "English" fits on the translate-to buttons.
+- The model list now shows which model is recommended, based on the new benchmark ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)): *small* is the best value, *base* for low-end PCs, *tiny* is low accuracy, *medium / large-v3-turbo* only pay off with a GPU.
 - **Google Cloud Translation was removed.** Only DeepL and Gemini need a key now; offline and MyMemory need none. If you had chosen Google Cloud the app switches back to offline.
 
 ## v1.0.0-beta.2 — New name, installer, one-click update
