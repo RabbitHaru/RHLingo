@@ -1,11 +1,11 @@
-# 🐰 RabbitHaru Translator
+# 🐰 HaruMimi — by RabbitHaru
 
 VRChat 전용 음성 인식(STT) 번역기. 마이크로 말하면 인식 → (번역) → VRChat 채팅박스(OSC)로 자동 전송합니다.
 한국어 / 日本語 / English 지원. **정확성 · 신속성 · 가벼움**을 최우선으로 만들었어요.
 
 ## 사용법
 1. VRChat 액션 메뉴 → Options → OSC → **Enabled** 켜기
-2. `RabbitHaruTranslator.exe` 실행 → 첫 실행 안내 확인 → 번역할 언어(또는 받아쓰기) 선택 → **시작**
+2. `HaruMimi.exe` 실행 → 첫 실행 안내 확인 → 번역할 언어(또는 받아쓰기) 선택 → **시작**
 3. 처음에는 음성 모델 다운로드 허락을 물어봐요 (크기를 알려드려요)
 
 ## 특징
@@ -23,7 +23,7 @@ VRChat 전용 음성 인식(STT) 번역기. 마이크로 말하면 인식 → (�
 ## 개발
 ```
 pip install -r requirements.txt
-python RabbitHaruTranslator.py
+python HaruMimi.py
 ```
 exe 빌드는 `build.bat`. 설정과 모델은 `%APPDATA%\RabbitHaru` 에 저장됩니다.
 업데이트 내역은 [CHANGELOG.md](CHANGELOG.md) 를 참고하세요.

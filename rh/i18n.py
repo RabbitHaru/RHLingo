@@ -9,7 +9,7 @@ NAME_IN = {
 
 STR = {
     "en": {
-        "title": "RabbitHaru Translator", "start": "Start", "stop": "Stop", "stopping": "Stopping…",
+        "title": "HaruMimi", "tagline": "Speech-to-text & translator · by RabbitHaru", "start": "Start", "stop": "Stop", "stopping": "Stopping…",
         "st_idle": "Idle", "st_loading": "Loading model… (first run downloads it)",
         "st_listening": "Listening", "st_paused": "Paused", "st_muted": "Muted in VRChat",
         "pause": "Pause", "resume": "Resume", "translate_to": "Translate to",
@@ -57,12 +57,12 @@ STR = {
         "fb_hint": "Found a bug or have an idea? Tell me!", "fb_box": "Write your feedback here…",
         "fb_github": "Send via GitHub", "fb_form": "Open feedback form", "fb_log": "Open log folder",
         "fb_none": "Feedback link is not set up yet.",
-        "support_text": "RabbitHaru Translator is free. If it helps you, a little support keeps updates coming. Thank you!",
+        "support_text": "HaruMimi is free. If it helps you, a little support keeps updates coming. Thank you!",
         "support_none": "Support links are coming soon.",
         "update_avail": "New version available", "version": "Version", "no_changelog": "No update notes.",
     },
     "ko": {
-        "title": "RabbitHaru Translator", "start": "시작", "stop": "중지", "stopping": "중지 중…",
+        "title": "HaruMimi", "tagline": "음성 인식 · 번역 — by RabbitHaru", "start": "시작", "stop": "중지", "stopping": "중지 중…",
         "st_idle": "대기 중", "st_loading": "모델 준비 중… (처음엔 다운로드로 오래 걸려요)",
         "st_listening": "듣는 중", "st_paused": "일시정지", "st_muted": "VRChat 뮤트 중",
         "pause": "일시정지", "resume": "다시 듣기", "translate_to": "번역할 언어",
@@ -110,12 +110,12 @@ STR = {
         "fb_hint": "버그나 아이디어가 있나요? 알려주세요!", "fb_box": "피드백을 여기에 적어주세요…",
         "fb_github": "GitHub로 보내기", "fb_form": "피드백 폼 열기", "fb_log": "로그 폴더 열기",
         "fb_none": "피드백 링크가 아직 준비되지 않았어요.",
-        "support_text": "RabbitHaru 번역기는 무료예요. 도움이 되셨다면 작은 후원이 업데이트에 큰 힘이 돼요. 감사합니다!",
+        "support_text": "HaruMimi는 무료예요. 도움이 되셨다면 작은 후원이 업데이트에 큰 힘이 돼요. 감사합니다!",
         "support_none": "후원 링크는 준비 중이에요.",
         "update_avail": "새 버전이 있어요", "version": "버전", "no_changelog": "업데이트 내역이 없어요.",
     },
     "ja": {
-        "title": "RabbitHaru Translator", "start": "開始", "stop": "停止", "stopping": "停止中…",
+        "title": "HaruMimi", "tagline": "音声認識 · 翻訳 — by RabbitHaru", "start": "開始", "stop": "停止", "stopping": "停止中…",
         "st_idle": "待機中", "st_loading": "モデル準備中… (初回はダウンロードで時間がかかります)",
         "st_listening": "聞き取り中", "st_paused": "一時停止", "st_muted": "VRChatでミュート中",
         "pause": "一時停止", "resume": "再開", "translate_to": "翻訳先",
@@ -163,7 +163,7 @@ STR = {
         "fb_hint": "バグやアイデアがあれば教えてください!", "fb_box": "ここにフィードバックを書いてください…",
         "fb_github": "GitHubで送る", "fb_form": "フィードバックフォームを開く", "fb_log": "ログフォルダを開く",
         "fb_none": "フィードバックのリンクはまだ準備中です。",
-        "support_text": "RabbitHaru翻訳機は無料です。役に立ったら、ささやかな応援がアップデートの力になります。ありがとうございます!",
+        "support_text": "HaruMimiは無料です。役に立ったら、ささやかな応援がアップデートの力になります。ありがとうございます!",
         "support_none": "応援リンクは準備中です。",
         "update_avail": "新しいバージョンがあります", "version": "バージョン", "no_changelog": "更新履歴はありません。",
     },

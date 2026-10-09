@@ -1,4 +1,4 @@
-Privacy notice (RabbitHaru Translator)
+Privacy notice (HaruMimi by RabbitHaru)
 
 ■ The developer does not collect, store or receive any personal data.
 The app has no accounts, analytics, ads or remote logging.

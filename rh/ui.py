@@ -179,7 +179,7 @@ class MainWindow(ctk.CTk):
         self.bubbles = []
         self._shown_state = None
         self._mpos = self._meter_on = None
-        self.title(T("title"))
+        self.title(f"{T('title')} · by RabbitHaru")
 
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=20, pady=(18, 0))
@@ -188,6 +188,7 @@ class MainWindow(ctk.CTk):
             ctk.CTkButton(top, text=txt, width=36, height=36, corner_radius=18, font=f(16),
                           fg_color=CARD, hover_color=FIELD, text_color=TEXT, command=cmd).pack(side="right", padx=(6, 0))
 
+        ctk.CTkLabel(self, text=T("tagline"), font=f(12), text_color=SUB, anchor="w").pack(fill="x", padx=24)
         self.status = ctk.CTkLabel(self, text="", font=f(12), text_color=SUB, anchor="w")
         self.status.pack(fill="x", padx=24, pady=(2, 0))
         self.update_lbl = ctk.CTkLabel(self, text="", font=f(12, True), text_color=PURPLE, cursor="hand2", anchor="w")
@@ -395,7 +396,7 @@ class MainWindow(ctk.CTk):
     def _check_update(self):
         try:
             url = f"https://api.github.com/repos/{links.GITHUB_REPO}/releases/latest"
-            req = urllib.request.Request(url, headers={"User-Agent": "RabbitHaru-Translator"})
+            req = urllib.request.Request(url, headers={"User-Agent": "HaruMimi"})
             data = json.loads(urllib.request.urlopen(req, timeout=8).read().decode("utf-8"))
             tag = data.get("tag_name", "").lstrip("v")
             if tag and tuple(map(int, tag.split("."))) > tuple(map(int, APP_VERSION.split("."))):
