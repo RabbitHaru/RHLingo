@@ -16,9 +16,9 @@ import customtkinter as ctk
 
 from . import i18n, links, secret
 from .config import APP_NAME, APP_VERSION, DATA_DIR, load_config, log_error, save_config
-from .engine import (MODEL_SIZES_MB, MT_DIR, MT_SIZE_MB, Engine, MicMonitor, Output, TranslateError, download_mt,
+from .engine import (MODEL_SIZES_MB, MT_MODELS, Engine, MicMonitor, Output, TranslateError, download_mt,
                      format_chatbox, get_model, list_mics, meter_value, model_cached, model_name, mt_cached,
-                     preview_default, release_model, release_mt, threshold_for, translate_text,
+                     mt_dir, mt_tier, preview_default, release_model, release_mt, threshold_for, translate_text,
                      translation_allowed)
 from .i18n import LANGS, NATIVE, T, lang_label
 
@@ -425,16 +425,17 @@ class MainWindow(ctk.CTk):
 
     def ensure_mt(self, force=False):
         """오프라인 번역 모델이 필요하면 크기를 알리고 허락받아 백그라운드로 내려받음. False = 거절."""
-        if (self.cfg["translator"] != "local" and not force) or mt_cached() or self._mt_pct is not None:
+        tier = mt_tier(self.cfg)
+        if (self.cfg["translator"] != "local" and not force) or mt_cached(tier) or self._mt_pct is not None:
             return True
-        body = T("dl_body").format(mb=MT_SIZE_MB, name=T("mt_name"))
+        body = T("dl_body").format(mb=MT_MODELS[tier]["size_mb"], name=T("mt_name_" + tier))
         if not ask(self, T("dl_title"), body, T("dl_yes"), T("dl_no")):
             return False
         self._mt_pct = 0
 
         def run():
             try:
-                download_mt(lambda p: setattr(self, "_mt_pct", p))
+                download_mt(tier, lambda p: setattr(self, "_mt_pct", p))
                 self.events.put(("info", "info_mt_ready"))
             except Exception as e:
                 log_error(f"mt download: {type(e).__name__}")
@@ -633,6 +634,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self.option("translator", T("tr_provider"),
                     [("local", T("tp_local")), ("mymemory", T("tp_mymemory")), ("deepl", T("tp_deepl")),
                      ("google", T("tp_google"))], cb=lambda v: self._refresh_key_ui())
+        self.option("mt_quality", T("mt_quality"), [("standard", T("mq_standard")), ("high", T("mq_high"))],
+                    cb=lambda v: (self._refresh_mt(), self.app.after(80, self.app.ensure_mt)))
         self._build_mt_card()
         card = self.card()
         ctk.CTkLabel(card, text=T("tr_key"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
@@ -886,14 +889,16 @@ class SettingsWindow(ctk.CTkToplevel):
         self._refresh_mt()
 
     def _refresh_mt(self):
-        ok = mt_cached()
-        self.mt_lbl.configure(text=T("mt_status_ok") if ok else T("mt_status_none"), text_color=GREEN if ok else SUB)
+        tier = mt_tier(self.cfg)
+        ok = mt_cached(tier)
+        self.mt_lbl.configure(text=T("mt_status_ok") if ok else T("mt_status_none").format(mb=MT_MODELS[tier]["size_mb"]),
+                              text_color=GREEN if ok else SUB)
         self.mt_get.configure(state="normal" if not ok and self.app._mt_pct is None else "disabled")
         self.mt_rm.configure(state="normal" if ok else "disabled")
 
     def _mt_remove(self):
         release_mt()
-        shutil.rmtree(MT_DIR, ignore_errors=True)
+        shutil.rmtree(mt_dir(mt_tier(self.cfg)), ignore_errors=True)
         self._refresh_mt()
 
     def _save_vocab(self, _=None):

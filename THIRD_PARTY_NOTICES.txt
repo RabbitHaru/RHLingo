@@ -8,9 +8,10 @@ Additional notes
 - Speech recognition uses OpenAI Whisper model weights (MIT License) converted for CTranslate2
   (Systran/faster-whisper-*, mobiuslabsgmbh/faster-whisper-large-v3-turbo). They are downloaded
   by the user on first use and are not part of this distribution.
-- Offline translation uses Meta's M2M100 418M model (MIT License, Copyright (c) Facebook, Inc. and its affiliates),
-  converted to CTranslate2 int8 and published by 'gn64' (MIT). It is downloaded by the user after approval,
-  verified by SHA-256 checksum, and is not part of this distribution.
+- Offline translation uses Meta's M2M100 models (418M standard / 1.2B high quality; MIT License,
+  Copyright (c) Facebook, Inc. and its affiliates), converted to CTranslate2 int8 and published by
+  'gn64' (418M) and 'jncraton' (1.2B), both MIT. They are downloaded by the user after approval,
+  verified by SHA-256 checksum, and are not part of this distribution.
 - Voice activity detection uses the Silero VAD model (MIT License) bundled with faster-whisper.
 - The 'av' (PyAV) package bundles FFmpeg libraries licensed under LGPL v2.1+. FFmpeg source code
   is available at https://ffmpeg.org/ . These libraries ship as separate DLL files in this

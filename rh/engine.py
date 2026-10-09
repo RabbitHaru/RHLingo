@@ -6,6 +6,7 @@ import html
 import json
 import os
 import queue
+import re
 import shutil
 import sys
 import threading
@@ -309,7 +310,7 @@ def _http_json(url, body=None, headers=None, timeout=8):
         raise TranslateError("network error")
 
 
-def _mymemory(text, src, tgt, key=None):
+def _mymemory(text, src, tgt, key=None, cfg=None):
     pair = f"{MM_CODES.get(src, 'autodetect')}|{MM_CODES[tgt]}"
     r = _http_json("https://api.mymemory.translated.net/get?" +
                    urllib.parse.urlencode({"q": text[:450], "langpair": pair}))
@@ -319,7 +320,7 @@ def _mymemory(text, src, tgt, key=None):
     return html.unescape(out)
 
 
-def _deepl(text, src, tgt, key):
+def _deepl(text, src, tgt, key, cfg=None):
     host = "api-free.deepl.com" if key.endswith(":fx") else "api.deepl.com"
     body = {"text": [text], "target_lang": {"ko": "KO", "ja": "JA", "en": "EN-US"}[tgt]}
     if src in MM_CODES:
@@ -329,7 +330,7 @@ def _deepl(text, src, tgt, key):
     return r["translations"][0]["text"]
 
 
-def _google_cloud(text, src, tgt, key):
+def _google_cloud(text, src, tgt, key, cfg=None):
     body = {"q": text, "target": tgt, "format": "text"}
     if src in MM_CODES:
         body["source"] = src
@@ -339,35 +340,56 @@ def _google_cloud(text, src, tgt, key):
 
 
 
-# ---------------------------------------------------------------- 오프라인 번역 (M2M100 418M, MIT 라이선스)
+# ---------------------------------------------------------------- 오프라인 번역 (M2M100, MIT 라이선스)
 # 한도 없음 / 인터넷 불필요 / 문장이 PC 밖으로 나가지 않음. 받은 파일은 SHA-256 으로 검증합니다.
-MT_NAME = "m2m100-418m-int8"
-MT_BASE_URL = "https://huggingface.co/gn64/M2M100_418M_CTranslate2/resolve/main/"
-MT_FILES = {  # 파일명: (SHA-256, 크기)
-    "config.json": ("8f6496adfc930cbfecbe8281112197705c488fab47d34b4829b06d7f478909af", 223),
-    "sentencepiece.bpe.model": ("d8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a", 2423393),
-    "shared_vocabulary.json": ("7eb5d0ff184c6095c7c10f9911c0aea492250abd12854f9c3d787c64b1c6397e", 2796509),
-    "model.bin": ("a1826980fc5c037e69c7ac94fcb56c03001a66f380eb71863cc0a3879e71421b", 490667752),
+MT_MODELS = {
+    "standard": {  # 기본: 가볍고 빠름
+        "name": "m2m100-418m-int8", "size_mb": 494, "beam": 4,
+        "base": "https://huggingface.co/gn64/M2M100_418M_CTranslate2/resolve/main/",
+        "files": {  # 파일명: (SHA-256, 크기)
+            "config.json": ("8f6496adfc930cbfecbe8281112197705c488fab47d34b4829b06d7f478909af", 223),
+            "sentencepiece.bpe.model": ("d8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a", 2423393),
+            "shared_vocabulary.json": ("7eb5d0ff184c6095c7c10f9911c0aea492250abd12854f9c3d787c64b1c6397e", 2796509),
+            "model.bin": ("a1826980fc5c037e69c7ac94fcb56c03001a66f380eb71863cc0a3879e71421b", 490667752),
+        }},
+    "high": {  # 고품질: 더 자연스럽지만 용량/메모리가 큼
+        "name": "m2m100-1.2b-int8", "size_mb": 1253, "beam": 2,
+        "base": "https://huggingface.co/jncraton/m2m100_1.2B-ct2-int8/resolve/main/",
+        "files": {
+            "config.json": ("4244772990e30069563e3ddfb4ad6dc95bdfd2ac3de667ea8858c9b0a8433fa8", 189),
+            "sentencepiece.bpe.model": ("d8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a", 2423393),
+            "shared_vocabulary.json": ("7eb5d0ff184c6095c7c10f9911c0aea492250abd12854f9c3d787c64b1c6397e", 2796509),
+            "model.bin": ("c97df052a558895317312470e1ff7cb8eae5416f7ae16214a2983c6853dd3ce5", 1249655149),
+        }},
 }
-MT_SIZE_MB = 494
-MT_DIR = MODEL_DIR / MT_NAME
 
 
-def mt_cached():
-    return all((MT_DIR / n).exists() and (MT_DIR / n).stat().st_size == sz for n, (_, sz) in MT_FILES.items())
+def mt_tier(cfg):
+    t = (cfg or {}).get("mt_quality", "standard")
+    return t if t in MT_MODELS else "standard"
 
 
-def download_mt(progress=None, base_url=MT_BASE_URL, target_dir=None):
+def mt_dir(tier="standard"):
+    return MODEL_DIR / MT_MODELS[tier]["name"]
+
+
+def mt_cached(tier="standard"):
+    d = mt_dir(tier)
+    return all((d / n).exists() and (d / n).stat().st_size == sz for n, (_, sz) in MT_MODELS[tier]["files"].items())
+
+
+def download_mt(tier="standard", progress=None, base_url=None, target_dir=None):
     """오프라인 번역 모델 다운로드 (호출 전에 사용자 허락을 받을 것). 해시가 다르면 폐기."""
-    d = Path(target_dir or MT_DIR)
+    spec = MT_MODELS[tier]
+    d = Path(target_dir or mt_dir(tier))
     tmp = d.with_name(d.name + ".part")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
-    total, done = sum(sz for _, sz in MT_FILES.values()), 0
+    total, done = sum(sz for _, sz in spec["files"].values()), 0
     try:
-        for name, (digest, _) in MT_FILES.items():
+        for name, (digest, _) in spec["files"].items():
             h = hashlib.sha256()
-            req = urllib.request.Request(base_url + name, headers={"User-Agent": "HaruMimi"})
+            req = urllib.request.Request((base_url or spec["base"]) + name, headers={"User-Agent": "HaruMimi"})
             with urllib.request.urlopen(req, timeout=30) as r, open(tmp / name, "wb") as out:
                 while True:
                     chunk = r.read(1 << 20)
@@ -390,13 +412,23 @@ def download_mt(progress=None, base_url=MT_BASE_URL, target_dir=None):
             progress(None)
 
 
-_mt = {"tr": None, "sp": None}
+_mt = {"tier": None, "tr": None, "sp": None}
 _mt_lock = threading.Lock()
+
+
+def preload_mt(cfg):
+    """오프라인 번역을 쓸 예정이면 미리 메모리에 올려 둠 (이미 받아둔 모델만, 다운로드는 하지 않음)."""
+    if cfg.get("translator", "local") != "local" or cfg.get("target") == "off" or not mt_cached(mt_tier(cfg)):
+        return
+    try:
+        _local("테스트", "ko", "en", cfg=cfg)
+    except Exception as e:
+        log_error(f"preload_mt: {type(e).__name__}")
 
 
 def release_mt():
     with _mt_lock:
-        _mt.update(tr=None, sp=None)
+        _mt.update(tier=None, tr=None, sp=None)
     gc.collect()
 
 
@@ -410,22 +442,125 @@ def guess_lang(text):
     return "en"
 
 
-def _local(text, src, tgt, key=None):
-    if not mt_cached():
+# VRChat 용어: 번역기가 자주 틀리는 단어(마이크 -> Mike 등)를 자리표시자로 보호했다가 목표 언어 용어로 복원
+GLOSSARY = {
+    "mic": {"ko": "마이크", "ja": "マイク", "en": "mic"},
+    "avatar": {"ko": "아바타", "ja": "アバター", "en": "avatar"},
+    "world": {"ko": "월드", "ja": "ワールド", "en": "world"},
+    "instance": {"ko": "인스턴스", "ja": "インスタンス", "en": "instance"},
+    "mute": {"ko": "뮤트", "ja": "ミュート", "en": "mute"},
+}
+ALIASES = {
+    "mic": ["마이크", "マイク", "microphone", "mic"], "avatar": ["아바타", "アバター", "avatar"],
+    "world": ["월드", "ワールド", "world"], "instance": ["인스턴스", "インスタンス", "instance"],
+    "mute": ["뮤트", "ミュート", "mute"],
+}
+
+
+def protect_terms(text, tgt, names=()):
+    """용어/이름을 X1, X2... 로 바꿈. 반환: (바꾼 문장, {자리표시자: 복원할 단어})"""
+    if re.search(r"X\d", text):
+        return text, {}
+    found = {}
+
+    def protect(pattern, repl):
+        nonlocal text
+        if len(found) >= 9:
+            return
+        ph = f"X{len(found) + 1}"
+        new, n = pattern.subn(ph, text)
+        if n:
+            found[ph], text = repl, new
+
+    for name in names:  # 사용자가 등록한 이름은 번역하지 않고 그대로 유지
+        protect(re.compile(re.escape(name), re.I if name.isascii() else 0), name)
+    for concept, aliases in ALIASES.items():
+        for alias in sorted(aliases, key=len, reverse=True):
+            protect(re.compile(re.escape(alias), re.I if alias.isascii() else 0), GLOSSARY[concept][tgt])
+    return text, found
+
+
+def _batchim(ch):
+    code = ord(ch) - 0xAC00
+    return 0 <= code < 11172 and code % 28 != 0
+
+
+def fix_ko_particles(text, terms):
+    """복원한 한국어 용어 뒤의 조사를 받침에 맞게 교정 (아바타이 -> 아바타가, 마이크은 -> 마이크는)."""
+    pairs = {"이": ("이", "가"), "가": ("이", "가"), "은": ("은", "는"), "는": ("은", "는"),
+             "을": ("을", "를"), "를": ("을", "를"), "과": ("과", "와"), "와": ("과", "와")}
+    for term in terms:
+        if not term or not (0xAC00 <= ord(term[-1]) <= 0xD7A3):
+            continue
+        has = _batchim(term[-1])
+        text = re.sub(re.escape(term) + r"([이가은는을를과와])",
+                      lambda m: term + pairs[m.group(1)][0 if has else 1], text)
+    return text
+
+
+_JA_SPACE = re.compile("(?<=[\u3040-\u30ff\u4e00-\u9fff])\\s+(?=[\u3040-\u30ff\u4e00-\u9fff])")  # 일본어 글자 사이 공백 제거
+_SENT = re.compile(r"(?<=[.!?。！？])\s*")
+
+
+def split_sentences(text, limit=70):
+    """긴 발화는 문장 단위로 나눠 번역 (한 번에 길게 넣으면 품질이 떨어짐)."""
+    parts = []
+    for sent in (x.strip() for x in _SENT.split(text) if x.strip()):
+        if len(sent) <= limit:
+            parts.append(sent)
+            continue
+        chunk = ""
+        for piece in re.split(r"(?<=[,，、])\s*", sent):
+            if chunk and len(chunk) + len(piece) > limit:
+                parts.append(chunk)
+                chunk = ""
+            chunk = (chunk + " " + piece).strip()
+        if chunk:
+            parts.append(chunk)
+    return parts or [text]
+
+
+def _mt_run(text, src, tgt, beam):
+    sp, tr = _mt["sp"], _mt["tr"]
+    parts = split_sentences(text)
+    batch = [[f"__{src}__"] + sp.encode(p, out_type=str) + ["</s>"] for p in parts]  # M2M100 은 종료 토큰을 직접 붙임
+    res = tr.translate_batch(batch, target_prefix=[[f"__{tgt}__"]] * len(batch), beam_size=beam,
+                             max_decoding_length=96, repetition_penalty=1.15, no_repeat_ngram_size=3)
+    outs = [sp.decode(r.hypotheses[0][1:]).strip() for r in res]
+    return ("" if tgt == "ja" else " ").join(o for o in outs if o)
+
+
+def _local(text, src, tgt, key=None, cfg=None):
+    cfg = cfg or {}
+    tier = mt_tier(cfg)
+    if not mt_cached(tier):
         raise TranslateError("offline model not downloaded")
     with _mt_lock:
-        if _mt["tr"] is None:
+        if _mt["tr"] is None or _mt["tier"] != tier:
             import ctranslate2
             import sentencepiece
-            _mt["sp"] = sentencepiece.SentencePieceProcessor(model_file=str(MT_DIR / "sentencepiece.bpe.model"))
-            _mt["tr"] = ctranslate2.Translator(str(MT_DIR), device="cpu", compute_type="int8", inter_threads=1,
+            d = mt_dir(tier)
+            _mt.update(tr=None, sp=None)
+            gc.collect()
+            _mt["sp"] = sentencepiece.SentencePieceProcessor(model_file=str(d / "sentencepiece.bpe.model"))
+            _mt["tr"] = ctranslate2.Translator(str(d), device="cpu", compute_type="int8", inter_threads=1,
                                                intra_threads=min(8, os.cpu_count() or 4))
-        tr, sp = _mt["tr"], _mt["sp"]
-        s = src if src and sp.piece_to_id(f"__{src}__") != sp.unk_id() else guess_lang(text)
-        toks = [f"__{s}__"] + sp.encode(text, out_type=str) + ["</s>"]  # M2M100 은 종료 토큰을 직접 붙여야 함
-        r = tr.translate_batch([toks], target_prefix=[[f"__{tgt}__"]], beam_size=2, max_decoding_length=96,
-                               repetition_penalty=1.15, no_repeat_ngram_size=3)
-        out = sp.decode(r[0].hypotheses[0][1:]).strip()
+            _mt["tier"] = tier
+        s = src if src and _mt["sp"].piece_to_id(f"__{src}__") != _mt["sp"].unk_id() else guess_lang(text)
+        beam = MT_MODELS[tier]["beam"]
+        names = [n.strip() for n in str(cfg.get("vocab", "")).split(",") if n.strip()]
+        prot, found = protect_terms(text, tgt, names)
+        out = _mt_run(prot, s, tgt, beam)
+        if found:
+            if all(re.search(ph + r"(?!\d)", out) for ph in found):
+                for ph, repl in found.items():
+                    out = re.sub(ph + r"(?!\d)", lambda m, r=repl: r, out)
+                if tgt == "ko":
+                    out = fix_ko_particles(out, list(found.values()))
+            else:  # 자리표시자가 깨졌으면 보호 없이 다시 번역
+                out = _mt_run(text, s, tgt, beam)
+    if tgt == "ja":
+        out = _JA_SPACE.sub("", out)
     if not out:
         raise TranslateError("empty translation")
     return out
@@ -449,7 +584,7 @@ def translate_text(cfg, text, src, tgt):
     last = None
     for _ in range(2):
         try:
-            return fn(text, src, tgt, key)
+            return fn(text, src, tgt, key, cfg)
         except TranslateError as e:
             last = e
             if "network" not in str(e):
@@ -554,6 +689,7 @@ class Engine:
             self.model, self.device = get_model(self.cfg, lambda p: setattr(self, "dl_pct", p))
             self.events.put(("info", "info_gpu" if self.device == "cuda" else "info_cpu"))
             threading.Thread(target=self._worker, daemon=True).start()
+            threading.Thread(target=preload_mt, args=(self.cfg,), daemon=True).start()
             self._start_mute_listener()
             stream = self._open_stream()
             self.ready = True
