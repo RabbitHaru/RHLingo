@@ -6,6 +6,10 @@
 
 ### Added
 - Google **Gemini** as an optional translation service (your own Google AI Studio key, official Gemini API). The key goes in a header, not the URL. The model name defaults to an always-latest alias and can be changed in Settings → Translation; if the model is retired the app finds a current one automatically. Settings and the privacy notice explain that content sent with a free quota may be used by Google to improve its products and reviewed by humans.
+- **Setup wizard** (Inno Setup): per-user install without admin rights, Start Menu/desktop shortcuts, a rounded purple Windows 11-style look that follows light/dark mode, English/Korean/Japanese, and an uninstaller that asks before deleting your settings and models.
+
+### Changed
+- New simple **RH** bunny-ear icon for the app window, taskbar, exe and installer.
 
 ## v1.0.0-beta.1 — First beta
 

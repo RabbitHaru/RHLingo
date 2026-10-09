@@ -50,6 +50,20 @@ def resource_path(name):
     return base / name
 
 
+def set_icon(win):
+    """창/작업표시줄 아이콘. customtkinter 가 200ms 뒤 기본 아이콘으로 덮어써서 그 뒤에 다시 지정."""
+    ico = resource_path("HaruMimi.ico")
+    if not ico.exists():
+        return
+
+    def apply():
+        try:
+            win.iconbitmap(str(ico))
+        except Exception:
+            pass
+    win.after(300, apply)
+
+
 def f(size=13, bold=False):
     return ctk.CTkFont(family=FONT, size=size, weight="bold" if bold else "normal")
 
@@ -90,6 +104,7 @@ def soft_button(parent, text, cmd, height=34, **kw):
 class _Modal(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent, fg_color=BG)
+        set_icon(self)
         self.resizable(False, False)
         self.transient(parent)
         self.attributes("-topmost", True)
@@ -169,6 +184,7 @@ class ConsentWindow(_Modal):
 class MainWindow(ctk.CTk):
     def __init__(self):
         super().__init__(fg_color=BG)
+        set_icon(self)
         self.cfg = load_config()
         i18n.set_lang(self.cfg["ui_lang"])
         ctk.set_appearance_mode(self.cfg["theme"])
@@ -622,6 +638,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def __init__(self, app, page="general"):
         super().__init__(app, fg_color=BG)
+        set_icon(self)
         self.app, self.cfg = app, app.cfg
         self._test_result = None
         self.monitor = None
@@ -1109,6 +1126,7 @@ class SettingsWindow(ctk.CTkToplevel):
 class InfoWindow(ctk.CTkToplevel):
     def __init__(self, app, tab):
         super().__init__(app, fg_color=BG)
+        set_icon(self)
         self.app = app
         self.title(f"{T('title')} · {T('about')}")
         self.geometry("860x560")

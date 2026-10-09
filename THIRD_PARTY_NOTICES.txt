@@ -3740,3 +3740,6 @@ python-osc (Unlicense)     https://github.com/attwad/python-osc
 sentencepiece (Apache-2.0)    https://github.com/google/sentencepiece
 tokenizers (Apache-2.0)    https://github.com/huggingface/tokenizers
 Apache License 2.0 full text: https://www.apache.org/licenses/LICENSE-2.0
+
+Installer: Inno Setup (Jordan Russell / Martijn Laan, Inno Setup License) — https://jrsoftware.org/isinfo.php
+Korean/Japanese installer translations: Inno Setup unofficial translations (see the Inno Setup distribution).
