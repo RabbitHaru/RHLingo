@@ -1,29 +1,42 @@
-## v1.0.0
-- 인식 속도 3배 향상: 발화 길이에 맞춰 Whisper 입력 길이를 줄여 계산 (small 모델 약 0.73초 → 0.22초). 인식 결과는 대체로 같거나 더 정확
-- 반복 오류(같은 문장이 반복되는 현상) 자동 감지 후 안전한 방식으로 재시도, 남은 중복은 제거
-- 오프라인 번역 정확도 개선: VRChat 용어(마이크·아바타·월드·인스턴스·뮤트)와 등록한 이름 보호, 긴 발화는 문장 단위로 번역, 한국어 조사 자동 교정, 일본어 공백 정리, 번역 탐색 폭(beam) 상향
-- 오프라인 번역 품질 선택: 표준(약 490MB, 문장당 약 0.2초) / 고품질(약 1.25GB, 더 자연스러움)
-- 번역 모델을 엔진 시작 때 미리 로딩해 첫 문장이 느려지는 문제 제거
-- 오프라인 번역 추가 (M2M100, MIT): 사용 한도 없음, 문장당 약 0.15초, 인터넷·동의 불필요. 처음 한 번 약 490MB 다운로드 (허락 후, 체크섬 검증)
-- 번역 서비스 선택: 오프라인(기본) / MyMemory / DeepL / Google Cloud (모두 공식 API, 비공식 구글 호출 제거). API 키는 Windows 계정 전용으로 암호화 저장
-- 가로형 화면으로 디자인 개편 (메인 창 + 왼쪽 메뉴 설정 창)
-- 앱 이름을 HaruMimi (by RabbitHaru) 로 변경 — 음성 인식(STT) + 번역
-- 개인정보 보호: 첫 실행 때 안내와 동의를 받아요 (번역 문장 전송 / 새 버전 확인은 각각 선택, 기본 꺼짐)
-- 동의하지 않으면 번역 없이 받아쓰기(STT)만 동작해요. 음성은 PC 밖으로 나가지 않아요
-- 모델 다운로드 전에 크기를 알리고 허락을 받아요 (진행률 표시). 받아둔 모델은 인터넷 없이 로드
-- 설정 → 개인정보에서 동의 철회, 모든 로컬 데이터 삭제, 개인정보 처리 안내 보기
-- 받아쓰기 모드 추가 (번역 없이 인식 결과만 표시/전송)
-- 말하는 중에 인식 중인 글자를 실시간으로 미리 보여줘요
-- 모델을 미리 메모리에 올려 시작 즉시 동작 (앱 시작 시 백그라운드 준비)
-- 노이즈 제거(끔/약하게/강하게) + 주변 소음에 맞춰 마이크 감지 기준 자동 조절
-- 마이크 입력 레벨(dB)과 감지 기준선 표시 (설정 창, 메인 창)
-- 자주 쓰는 단어(이름 등)를 등록해 인식률 향상
-- 가벼움 우선: 인식 모델을 PC 사양에 맞게 자동 선택 (auto), 모델별 용량 안내
-- 말하는 언어 기본값을 앱 언어로 설정 (작은 모델도 더 정확하고 빠름)
-- GPU 라이브러리가 없는 PC에서 모델을 다시 불러올 때 멈추던 문제 수정
-- 인식(메인) 창과 설정 창 분리, 밝은/어두운 테마, 앱 화면 언어 선택 (한국어 / 日本語 / English)
-- VRChat 뮤트 연동, 일시정지, 직접 입력해서 번역·전송
-- 무음에서 나오는 엉뚱한 문구 자동 제거
-- GPU를 쓸 수 없으면 자동으로 CPU로 실행
-- 설정은 %APPDATA%\RabbitHaru 에 저장 (배포 후에도 안전)
-- 업데이트 내역 / 피드백 / 후원 / 개인정보 창
+# Changelog
+
+🇰🇷 한국어: [CHANGELOG.ko.md](CHANGELOG.ko.md)
+
+## v1.0.0 — First release
+
+### Highlights
+- Speech-to-text and translation for the VRChat chatbox (via OSC): Korean / Japanese / English.
+- Local by default: speech recognition (faster-whisper) and translation (M2M100, offline) run on your PC. No usage limits, and your voice and sentences never leave your PC.
+
+### Speech recognition
+- 3x faster recognition: Whisper's input is sized to the utterance instead of a fixed 30 s (`small` model: about 0.73 s → 0.22 s). Repeated-sentence glitches are detected and retried automatically.
+- About 0.9 s from the end of your speech to the translated text (16-core PC, `small` model; varies by PC).
+- Live preview of what is being recognized while you speak. Models preload, so Start is instant.
+- Model chosen automatically for your CPU (auto). GPU is used when available, with automatic CPU fallback.
+- Custom words (names etc.) improve recognition and are kept as-is in translation.
+- Transcribe-only mode (no translation).
+
+### Microphone
+- Noise reduction (off / light / strong) and automatic adaptation to background noise.
+- Voice-band detection ignores desk knocks and thumps; sounds shorter than 0.1 s are ignored.
+- Level meter (dB) with a threshold line, one-click "Auto-tune microphone", and a lower default sensitivity.
+
+### Translation
+- Offline translation (M2M100): no limits, about 0.2 s per sentence, no internet needed. The first use asks before downloading about 490 MB (checksum verified). Optional high-quality model (about 1.25 GB).
+- Protects VRChat terms (mic, avatar, world, instance, mute) and your custom names. Long speech is split into sentences; Korean particles and Japanese spacing are fixed up.
+- Optional online services with your own API key: DeepL and Google Cloud (official APIs), MyMemory (no key, daily limit). Keys are stored encrypted for your Windows account and used only after you consent.
+
+### Models
+- Settings → Speech recognition → Speech models: see which models are installed, with a **Download** button (asks first, shows the size and progress) and a **Delete** button for each.
+- Choosing a model that is not installed asks before downloading; nothing is downloaded without your approval.
+
+### App
+- New landscape layout, separate settings window, light / dark theme, UI in Korean / Japanese / English.
+- VRChat mute sync, pause button, type-to-translate box.
+- App name changed to HaruMimi (by RabbitHaru).
+
+### Privacy and data
+- First-run privacy notice. Nothing leaves your PC without your consent; every download asks first and shows its size.
+- Settings → Privacy: withdraw consent, delete all local data, read the privacy notice.
+- Settings are stored in `%APPDATA%\RabbitHaru`.
+- Third-party licenses are listed in `THIRD_PARTY_NOTICES.txt`.

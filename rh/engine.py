@@ -180,6 +180,38 @@ def transcribe_adaptive(model, audio, lang, hotwords=None):
     return segs, info
 
 
+def stt_dir(name):
+    return MODEL_DIR / ("models--" + MODEL_REPOS[name].replace("/", "--"))
+
+
+def download_stt(name, progress=None):
+    """음성 인식 모델 다운로드 (호출 전에 반드시 사용자 허락을 받을 것). 진행률은 폴더 크기 증가량으로 계산."""
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+    from faster_whisper.utils import download_model
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    stop = threading.Event()
+    base, expected = _dir_size(MODEL_DIR), MODEL_SIZES_MB[name] * 1e6
+
+    def poll():
+        while not stop.is_set():
+            progress(min(99, int((_dir_size(MODEL_DIR) - base) / expected * 100)))
+            stop.wait(0.5)
+    if progress is not None:
+        threading.Thread(target=poll, daemon=True).start()
+    try:
+        download_model(name, cache_dir=str(MODEL_DIR))
+    finally:
+        stop.set()
+        if progress is not None:
+            progress(None)
+
+
+def delete_stt(name):
+    release_model()  # 메모리에 올라가 있으면 먼저 내림
+    shutil.rmtree(stt_dir(name), ignore_errors=True)
+
+
 def release_model():
     with _MODEL_LOCK:
         _MODEL.update(key=None, model=None, device=None)
@@ -244,6 +276,41 @@ def meter_value(rms):
     return min(1.0, (rms / 0.05) ** 0.5)
 
 
+_band_cache = {}
+
+
+def speech_level(chunk, sr=SR):
+    """사람 목소리 대역(160~4000Hz)의 크기. 책상 치는 '쿵' 같은 저음과 초고음은 제외해서
+    '말소리인지'를 더 정확히 판단하고, 미터에도 같은 값을 보여줌."""
+    n = len(chunk)
+    key = (n, sr)
+    if key not in _band_cache:
+        w = np.hanning(n).astype(np.float32)
+        f = np.fft.rfftfreq(n, 1.0 / sr)
+        _band_cache[key] = (w, (f >= 160) & (f <= 4000), float(np.sum(w * w)))
+    w, mask, sw = _band_cache[key]
+    spec = np.fft.rfft(np.asarray(chunk, dtype=np.float32) * w)
+    return float(np.sqrt(2.0 * np.sum(np.abs(spec[mask]) ** 2) / (n * sw)))
+
+
+def sensitivity_for_threshold(thr):
+    """threshold_for 의 역함수 (기준 음량 -> 민감도 0~100)."""
+    return int(round(100 * (1 - math.sqrt(max(0.0, (thr - 0.002) / 0.05)))))
+
+
+def calibrate_sensitivity(quiet, speak):
+    """조용할 때 측정값과 말할 때 측정값으로 알맞은 민감도를 계산. 말소리가 안 들렸으면 None."""
+    if len(quiet) < 10 or len(speak) < 10:
+        return None
+    floor = float(np.percentile(quiet, 90))
+    loud = [x for x in speak if x > floor * 2.0]
+    if len(loud) < 6:
+        return None
+    voice = float(np.median(loud))
+    thr = min(max(floor * 2.5, voice * 0.3), voice * 0.5)  # 소음보다 충분히 크고, 말소리보다 충분히 작게
+    return max(5, min(95, sensitivity_for_threshold(thr)))
+
+
 class NoiseFloor:
     """최근 6초의 '조용한 순간' 음량을 재서, 주변 소음이 크면 감지 기준을 자동으로 올림."""
 
@@ -294,7 +361,8 @@ class MicMonitor:
     """모델 없이 마이크 음량만 측정 (설정 창에서 민감도 맞출 때 사용)."""
 
     def __init__(self, mic):
-        self.mic, self.level, self._stream = mic, 0.0, None
+        self.mic, self.level, self.raw, self._stream = mic, 0.0, 0.0, None
+        self.rate = SR
         self.nf = NoiseFloor()
 
     def start(self):
@@ -302,6 +370,7 @@ class MicMonitor:
             import sounddevice as sd
             dev = _resolve_mic(self.mic)
             rate = int(sd.query_devices(dev, "input")["default_samplerate"])
+            self.rate = rate
             self._stream = sd.InputStream(samplerate=rate, channels=1, dtype="float32", device=dev,
                                           callback=self._cb, blocksize=int(rate * CHUNK_SEC))
             self._stream.start()
@@ -310,7 +379,8 @@ class MicMonitor:
             self._stream = None
 
     def _cb(self, indata, frames, t, status):
-        rms = float(np.sqrt(np.mean(indata ** 2)))
+        rms = speech_level(indata[:, 0], self.rate)
+        self.raw = rms
         self.nf.update(rms)
         self.level = max(rms, self.level * 0.85)  # 천천히 내려오게 해서 읽기 쉽게
 
@@ -832,30 +902,33 @@ class Engine:
         c = self.cfg
         pre = collections.deque(maxlen=6)  # 말 시작 직전 0.3초 (첫 음절 잘림 방지)
         buf, silent, voiced, total, last_partial = [], 0.0, 0.0, 0.0, 0.0
+        above = 0  # 연속으로 기준을 넘은 조각 수 (순간적인 '탁' 소리 무시용)
         while self.running:
             try:
                 chunk = self.audio_q.get(timeout=0.2)
             except queue.Empty:
                 continue
             dur = len(chunk) / SR
-            rms = float(np.sqrt(np.mean(chunk ** 2)))
+            rms = speech_level(chunk)
             self.level = rms
             self.nf.update(rms)
             if self.paused or self.vrc_muted:
-                buf, silent, voiced, total = [], 0.0, 0.0, 0.0
+                buf, silent, voiced, total, above = [], 0.0, 0.0, 0.0, 0
                 self.speaking = False
                 pre.clear()
                 continue
             thr = self.nf.threshold(c["sensitivity"])
-            if rms > thr:
-                if not self.speaking:
-                    self.speaking, buf, voiced = True, list(pre), 0.0
-                    total, last_partial = len(buf) * dur, 0.0
-                silent = 0.0
-                voiced += dur
-            elif self.speaking:
-                silent += dur
+            loud = rms > thr
+            above = above + 1 if loud else 0
+            if not self.speaking and loud and above >= 2:  # 0.1초 이상 이어진 소리만 말소리로 시작
+                self.speaking, buf, voiced = True, list(pre), dur  # pre 에 첫 조각이 이미 들어 있음
+                total, last_partial = len(buf) * dur, 0.0
             if self.speaking:
+                if loud:
+                    silent = 0.0
+                    voiced += dur
+                else:
+                    silent += dur
                 buf.append(chunk)
                 total += dur
                 if silent >= c["silence_sec"] or total >= c["max_sec"]:

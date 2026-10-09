@@ -32,7 +32,7 @@ DEFAULTS = {
     "target": None,           # None = 앱 언어에 따라 자동 (ko->ja, ja->ko, en->ja) / ko / ja / en
     "model": "auto",          # auto(PC 사양에 맞게) / tiny / base / small / medium / large-v3-turbo
     "device_type": "auto",    # auto / cuda / cpu
-    "sensitivity": 50,        # 0~100 (높을수록 작은 소리도 인식)
+    "sensitivity": 40,        # 0~100 (높을수록 작은 소리도 인식)
     "silence_sec": 0.4,       # 이 시간 이상 조용하면 발화 종료
     "max_sec": 12.0,          # 발화 최대 길이
     "show_original": True,    # 채팅박스에 원문도 같이 표시

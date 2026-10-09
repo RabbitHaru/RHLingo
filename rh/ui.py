@@ -7,6 +7,7 @@ import queue
 import shutil
 import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -16,7 +17,8 @@ import customtkinter as ctk
 
 from . import i18n, links, secret
 from .config import APP_NAME, APP_VERSION, DATA_DIR, load_config, log_error, save_config
-from .engine import (MODEL_SIZES_MB, MT_MODELS, Engine, MicMonitor, Output, TranslateError, download_mt,
+from .engine import (MODEL_SIZES_MB, MT_MODELS, Engine, MicMonitor, Output, TranslateError, calibrate_sensitivity,
+                     delete_stt, download_mt, download_stt,
                      format_chatbox, get_model, list_mics, meter_value, model_cached, model_name, mt_cached,
                      mt_dir, mt_tier, preview_default, release_model, release_mt, threshold_for, translate_text,
                      translation_allowed)
@@ -151,6 +153,7 @@ class MainWindow(ctk.CTk):
         self._wrap_job = None
         self._shown_state = None
         self._mt_pct = None  # 오프라인 번역 모델 다운로드 진행률
+        self._stt_pct = None  # 음성 인식 모델 다운로드 진행률
         self.update_info = None
         self.build()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -353,7 +356,7 @@ class MainWindow(ctk.CTk):
         if e is not None:
             state = ("stopping" if not e.running else "loading" if not e.ready else
                      "paused" if e.paused else "muted" if e.vrc_muted else "listening")
-        key = (state, e.dl_pct if e is not None and state == "loading" else None, self._mt_pct)
+        key = (state, e.dl_pct if e is not None and state == "loading" else None, self._mt_pct, self._stt_pct)
         if key != self._shown_state:
             self._apply_state(*key)
         src = e if (e is not None and e.ready) else None
@@ -384,6 +387,9 @@ class MainWindow(ctk.CTk):
                 self.add_bubble(out, f"{name} · {T('stt_only')}" if tgt == "off" else name)
             else:
                 self.add_bubble(out, f"{name} → {NATIVE[tgt]}  ·  {text}")
+        elif kind == "start":
+            if self.engine is None:
+                self.start_engine()
         elif kind == "info":
             self.add_bubble(T(ev[1]), kind="sys")
         elif kind == "error":
@@ -392,14 +398,16 @@ class MainWindow(ctk.CTk):
             self.update_info = (ev[1], ev[2])
             self._show_update()
 
-    def _apply_state(self, state, pct=None, mtp=None):
-        self._shown_state = (state, pct, mtp)
+    def _apply_state(self, state, pct=None, mtp=None, stp=None):
+        self._shown_state = (state, pct, mtp, stp)
         loading = f"{T('dl_progress')} {pct}%" if pct is not None else T("st_loading")
         text, color = {
             "idle": (T("st_idle"), SUB), "loading": (loading, ORANGE),
             "listening": (T("st_listening"), GREEN), "paused": (T("st_paused"), ORANGE),
             "muted": (T("st_muted"), ORANGE), "stopping": (T("stopping"), SUB)}[state]
-        if mtp is not None:  # 오프라인 번역 모델 다운로드 중
+        if stp is not None:  # 음성 인식 모델 다운로드 중
+            text, color = f"{T('dl_progress')} {stp}%", ORANGE
+        elif mtp is not None:  # 오프라인 번역 모델 다운로드 중
             text, color = f"{T('dl_mt_progress')} {mtp}%", ORANGE
         self.status.configure(text="   ●  " + text, text_color=color)
         running = state not in ("idle", "stopping")
@@ -414,14 +422,40 @@ class MainWindow(ctk.CTk):
     # -- 동작 -----------------------------------------------------------
     def start_engine(self):
         name = model_name(self.cfg)
-        if not model_cached(name):  # 다운로드 전에 크기를 알리고 허락받기
-            body = T("dl_body").format(mb=MODEL_SIZES_MB[name], name=name)
-            if not ask(self, T("dl_title"), body, T("dl_yes"), T("dl_no")):
-                return
+        if not model_cached(name):  # 크기를 알리고 허락 -> 다운로드(진행률 표시) -> 끝나면 자동 시작
+            if self._stt_pct is None:
+                self.ensure_stt_model(name, then_start=True)
+            return
         if self.eff_target() != "off":
             self.ensure_mt()
         self.engine = Engine(self.cfg, self.output, self.events)
         self.engine.start()
+
+    def ensure_stt_model(self, name=None, then_start=False):
+        """음성 인식 모델이 없으면 크기를 알리고 허락받아 백그라운드로 내려받음. False = 거절/이미 진행 중."""
+        name = name or model_name(self.cfg)
+        if model_cached(name):
+            return True
+        if self._stt_pct is not None:
+            return False
+        body = T("dl_body").format(mb=MODEL_SIZES_MB[name], name=name)
+        if not ask(self, T("dl_title"), body, T("dl_yes"), T("dl_no")):
+            return False
+        self._stt_pct = 0
+
+        def run():
+            try:
+                download_stt(name, lambda p: setattr(self, "_stt_pct", p))
+                self.events.put(("info", "info_stt_ready"))
+                if then_start:
+                    self.events.put(("start",))
+            except Exception as e:
+                log_error(f"stt download: {type(e).__name__}")
+                self.events.put(("error", f"{T('dl_progress')}: {type(e).__name__}"))
+            finally:
+                self._stt_pct = None
+        threading.Thread(target=run, daemon=True).start()
+        return True
 
     def ensure_mt(self, force=False):
         """오프라인 번역 모델이 필요하면 크기를 알리고 허락받아 백그라운드로 내려받음. False = 거절."""
@@ -559,6 +593,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self.app, self.cfg = app, app.cfg
         self._test_result = None
         self.monitor = None
+        self.sliders = {}
+        self._cal = None
         self.title(T("settings"))
         self.geometry("820x600")
         self.minsize(760, 520)
@@ -611,10 +647,17 @@ class SettingsWindow(ctk.CTkToplevel):
             anchor="w", padx=14, pady=(0, 10))
         self._build_meter()
         self.slider("sensitivity", T("sensitivity"), 0, 100, 100, fmt="{:.0f}")
+        calcard = self.card()
+        self.cal_btn = pill_button(calcard, "🎯 " + T("cal_btn"), self._start_cal, height=34)
+        self.cal_btn.pack(anchor="w", padx=14, pady=(12, 4))
+        self.cal_lbl = ctk.CTkLabel(calcard, text="", font=f(12), text_color=SUB, anchor="w", justify="left", wraplength=530)
+        self.cal_lbl.pack(fill="x", padx=16, pady=(0, 12))
         self.slider("silence_sec", T("silence"), 0.2, 1.5, 26, fmt="{:.1f}s")
         self.option("noise_reduction", T("noise"), [("off", T("nr_off")), ("low", T("nr_low")), ("high", T("nr_high"))])
         self.option("model", T("model"), [(m, T("m_" + m)) for m in
-                                          ("auto", "tiny", "base", "small", "medium", "large-v3-turbo")])
+                                          ("auto", "tiny", "base", "small", "medium", "large-v3-turbo")],
+                    cb=lambda v: self.app.engine is None and self.app.after(80, self.app.ensure_stt_model))
+        self._build_stt_card()
         self.option("device_type", T("device"), [("auto", T("dev_auto")), ("cuda", T("dev_gpu")), ("cpu", T("dev_cpu"))])
         vcard = self.card()
         ctk.CTkLabel(vcard, text=T("vocab"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 2))
@@ -755,6 +798,7 @@ class SettingsWindow(ctk.CTkToplevel):
                           button_color=PURPLE, button_hover_color=PURPLE_H, fg_color=FIELD)
         s.set(self.cfg[key])
         s.pack(fill="x", padx=14, pady=(4, 12))
+        self.sliders[key] = (s, on)
 
     # -- 마이크 레벨 미터 -------------------------------------------------
     def _build_meter(self):
@@ -780,6 +824,48 @@ class SettingsWindow(ctk.CTkToplevel):
         thr = src.nf.threshold(self.cfg["sensitivity"]) if src is not None else threshold_for(self.cfg["sensitivity"])
         self.marker.place(in_=self.mbar, relx=meter_value(thr), rely=0.5, anchor="center")
 
+    # -- 마이크 자동 맞춤: 2초 조용히 + 3초 말하기 -> 알맞은 민감도 계산 -------------
+    def _raw_level(self):
+        e = self.app.engine
+        if e is not None and e.ready:
+            return e.level
+        return self.monitor.raw if self.monitor is not None else None
+
+    def _start_cal(self):
+        if self._cal is not None:
+            return
+        self._cal = {"t0": time.time(), "quiet": [], "speak": [], "phase": "quiet"}
+        self.cal_btn.configure(state="disabled")
+        self.cal_lbl.configure(text=T("cal_quiet"), text_color=ORANGE)
+        self.after(50, self._cal_tick)
+
+    def _cal_tick(self):
+        cal = self._cal
+        if cal is None or not self.winfo_exists():
+            return
+        lvl, el = self._raw_level(), time.time() - cal["t0"]
+        if lvl is not None:
+            if el < 2.0:
+                cal["quiet"].append(lvl)
+            elif el < 5.0:
+                if cal["phase"] == "quiet":
+                    cal["phase"] = "speak"
+                    self.cal_lbl.configure(text=T("cal_speak"))
+                cal["speak"].append(lvl)
+        if el < 5.0:
+            self.after(50, self._cal_tick)
+            return
+        self._cal = None
+        self.cal_btn.configure(state="normal")
+        s = calibrate_sensitivity(cal["quiet"], cal["speak"])
+        if s is None:
+            self.cal_lbl.configure(text=T("cal_fail"), text_color=RED)
+            return
+        slider, on = self.sliders["sensitivity"]
+        slider.set(s)
+        on(s)
+        self.cal_lbl.configure(text=T("cal_done").format(s=s), text_color=GREEN)
+
     def _stop_monitor(self):
         if self.monitor is not None:
             self.monitor.stop()
@@ -796,6 +882,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self._n = getattr(self, "_n", 0) + 1
         if self._n % 12 == 0 and hasattr(self, "mt_lbl"):
             self._refresh_mt()
+        if self._n % 12 == 0 and hasattr(self, "stt_rows"):
+            self._refresh_stt()
         e = self.app.engine
         if e is not None and e.ready:  # 인식 중이면 엔진의 음량을 그대로 사용
             self._stop_monitor()
@@ -874,6 +962,41 @@ class SettingsWindow(ctk.CTkToplevel):
                 self._test_result = (False, type(e).__name__)
         threading.Thread(target=run, daemon=True).start()
 
+    # -- 음성 인식 모델 관리 카드 ------------------------------------------
+    def _build_stt_card(self):
+        card = self.card()
+        ctk.CTkLabel(card, text=T("sec_models"), font=f(12), text_color=SUB).pack(anchor="w", padx=14, pady=(10, 4))
+        self.stt_rows = {}
+        for m in ("tiny", "base", "small", "medium", "large-v3-turbo"):
+            row = ctk.CTkFrame(card, fg_color="transparent")
+            row.pack(fill="x", padx=14, pady=3)
+            lbl = ctk.CTkLabel(row, text="", font=f(12), text_color=TEXT, anchor="w", justify="left", wraplength=280)
+            lbl.pack(side="left", fill="x", expand=True)
+            rm = soft_button(row, T("sm_delete"), lambda m=m: self._stt_delete(m), height=28, width=64)
+            rm.pack(side="right", padx=(6, 0))
+            dl = pill_button(row, "⬇ " + T("sm_download"), lambda m=m: self.app.ensure_stt_model(m), height=28, width=104)
+            dl.pack(side="right")
+            self.stt_rows[m] = (lbl, dl, rm)
+        ctk.CTkLabel(card, text=T("sm_hint"), font=f(11), text_color=SUB, anchor="w", justify="left",
+                     wraplength=530).pack(fill="x", padx=14, pady=(6, 12))
+        self._refresh_stt()
+
+    def _refresh_stt(self):
+        using, running = model_name(self.cfg), self.app.engine is not None
+        for m, (lbl, dl, rm) in self.stt_rows.items():
+            ok = model_cached(m)
+            text = f"{m} · {MODEL_SIZES_MB[m]} MB · " + (T("sm_installed") if ok else T("sm_none"))
+            if m == using:
+                text += " · " + T("sm_inuse")
+            lbl.configure(text=text, text_color=GREEN if ok else SUB)
+            dl.configure(state="normal" if not ok and self.app._stt_pct is None else "disabled")
+            rm.configure(state="normal" if ok and not (m == using and running) else "disabled")
+
+    def _stt_delete(self, m):
+        if ask(self, T("sm_delete"), T("sm_delete_body").format(name=m, mb=MODEL_SIZES_MB[m]), T("delete_yes"), T("dl_no")):
+            delete_stt(m)
+            self._refresh_stt()
+
     # -- 오프라인 번역 모델 카드 ------------------------------------------
     def _build_mt_card(self):
         card = self.card()
@@ -936,7 +1059,7 @@ class InfoWindow(ctk.CTkToplevel):
         names = {k: T(k) for k in ("tab_new", "tab_fb", "tab_support", "tab_privacy")}
         for n in names.values():
             tabs.add(n)
-        self._text(tabs.tab(names["tab_new"]), f"{T('version')} {APP_VERSION}\n\n" + self._read("CHANGELOG.md"))
+        self._text(tabs.tab(names["tab_new"]), f"{T('version')} {APP_VERSION}\n\n" + self._read(f"CHANGELOG.{i18n._lang}.md", "CHANGELOG.md"))
         self._feedback(tabs.tab(names["tab_fb"]))
         self._support(tabs.tab(names["tab_support"]))
         self._text(tabs.tab(names["tab_privacy"]), self._read(f"PRIVACY.{i18n._lang}.md", "PRIVACY.en.md"))

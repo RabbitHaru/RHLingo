@@ -1,41 +1,38 @@
 # 🐰 HaruMimi — by RabbitHaru
 
-VRChat 전용 음성 인식(STT) 번역기. 마이크로 말하면 인식 → (번역) → VRChat 채팅박스(OSC)로 자동 전송합니다.
-한국어 / 日本語 / English 지원. **정확성 · 신속성 · 가벼움**을 최우선으로 만들었어요.
+🇰🇷 한국어: [README.ko.md](README.ko.md)
 
-## 사용법
-1. VRChat 액션 메뉴 → Options → OSC → **Enabled** 켜기
-2. `HaruMimi.exe` 실행 → 첫 실행 안내 확인 → 번역할 언어(또는 받아쓰기) 선택 → **시작**
-3. 처음에는 음성 모델 다운로드 허락을 물어봐요 (크기를 알려드려요)
+Speech-to-text and translator for the VRChat chatbox. Speak into your microphone → it recognizes your speech → (translates) → sends it to your VRChat chatbox via OSC. Korean / Japanese / English. Built for **accuracy, speed and a light footprint**.
 
-## 특징
-- 로컬 Whisper(faster-whisper)로 인식: 사용량 한도 없음, 음성은 PC 밖으로 나가지 않음
-- 오프라인 번역(M2M100): 한도 없음, 문장당 약 0.2초, 문장도 PC 밖으로 나가지 않음. VRChat 용어·이름 보호, 표준/고품질 선택 (DeepL 등 공식 API 키 연결도 가능)
-- 받아쓰기(STT) 모드: 번역 없이 인식 결과만 표시/전송
-- 말하는 중 실시간 미리보기, 모델 미리 로드로 빠른 시작
-- 반응 속도: 말이 끝난 뒤 번역 결과까지 약 0.9초 (16코어 PC, 인식 모델 small 기준. PC 사양에 따라 다름)
-- 노이즈 제거 + 주변 소음에 맞춘 마이크 자동 조절, 마이크 레벨/기준선 표시
-- PC 사양에 맞는 모델 자동 선택, GPU가 없으면 CPU로 자동 전환
-- VRChat 뮤트 연동, 직접 입력 번역, 밝은/어두운 테마, 앱 언어 선택
+## Quick start
+1. In VRChat: Action Menu → Options → OSC → **Enabled**.
+2. Run `HaruMimi.exe`, read the first-run privacy notice, pick a language to translate to (or "Transcribe only"), then press **Start**.
+3. The first time, the app asks before downloading a speech model (it shows the size). You can also manage models in Settings → Speech recognition.
 
-## 개인정보
-개발자는 개인정보를 수집하지 않아요. 온라인 번역 서비스 사용과 새 버전 확인은 **동의한 경우에만**
-동작하고, 모델 다운로드는 **매번 허락을 받아요**. 자세한 내용: [한국어](PRIVACY.ko.md) · [English](PRIVACY.en.md) · [日本語](PRIVACY.ja.md)
+## Features
+- Local speech recognition (faster-whisper): no usage limits, and your voice never leaves your PC.
+- Offline translation (M2M100): no limits, about 0.2 s per sentence, and sentences stay on your PC. You can also connect DeepL / Google Cloud with your own API key.
+- About 0.9 s from the end of your speech to the translated text (16-core PC, `small` model; varies by PC).
+- Protects VRChat terms and your names in translation; Korean particle fix.
+- Noise reduction, voice-band detection (ignores desk knocks), one-click microphone auto-tune.
+- Live preview while you speak, transcribe-only mode, VRChat mute sync, type-to-translate.
+- Light / dark theme, UI in Korean / Japanese / English.
 
-## 개발
+## Privacy
+The developer collects no personal data. Online translation services and update checks are used **only with your consent**, and every download **asks first**. Details: [English](PRIVACY.en.md) · [한국어](PRIVACY.ko.md) · [日本語](PRIVACY.ja.md)
+
+## Development
 ```
 pip install -r requirements.txt
 python HaruMimi.py
 ```
-exe 빌드는 `build.bat`. 설정과 모델은 `%APPDATA%\RabbitHaru` 에 저장됩니다.
-업데이트 내역은 [CHANGELOG.md](CHANGELOG.md) 를 참고하세요.
+Build the exe with `build.bat`. Settings and models are stored in `%APPDATA%\RabbitHaru`.
+Release notes: [CHANGELOG.md](CHANGELOG.md). Release checklist: [RELEASING.md](RELEASING.md).
 
-## 고지 (Notices)
-- 이 프로젝트는 VRChat Inc., OpenAI, Google LLC와 제휴·후원·보증 관계가 없는 개인 프로젝트입니다.
-  "VRChat"은 VRChat Inc.의, "Google"/"Google 번역"은 Google LLC의 상표입니다.
-- 번역은 기본적으로 내 PC에서 도는 오프라인 모델(M2M100, MIT 라이선스)을 쓰며, 온라인 서비스(MyMemory/DeepL/Google Cloud)는
-  사용자가 직접 고르고 동의한 경우에만 공식 API로 이용합니다. 번역·인식 결과의 정확성은 보증하지 않으며,
-  VRChat 채팅박스에 보낸 내용의 책임은 사용자에게 있습니다.
-- 마이크에 다른 사람의 목소리가 들어올 수 있는 환경에서는 상대방의 동의와 관련 법규(통신비밀보호법 등)에 유의하세요.
-- 사용한 오픈소스와 라이선스는 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) 에 있습니다.
-- 소프트웨어는 "있는 그대로" 제공되며, 사용으로 인한 어떤 손해에도 책임을 지지 않습니다.
+## Notices
+- This is a personal project, not affiliated with, endorsed by or sponsored by VRChat Inc., OpenAI or Google LLC. "VRChat" is a trademark of VRChat Inc.; "Google" is a trademark of Google LLC.
+- Translation runs on an offline model (M2M100, MIT License) by default. Online services (MyMemory / DeepL / Google Cloud) are used through their official APIs, only if you choose them and consent.
+- No warranty is given for recognition or translation accuracy. You are responsible for what you send to the VRChat chatbox.
+- Be mindful of other people's voices that may be picked up by your microphone, and of the laws and consent rules that apply to you.
+- Open-source components and their licenses: [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+- Licensed under the [MIT License](LICENSE). The software is provided "as is", without warranty of any kind.
