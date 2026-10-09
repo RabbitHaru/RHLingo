@@ -31,14 +31,21 @@ DEFAULTS = {
     "target": None,           # None = 앱 언어에 따라 자동 (ko->ja, ja->ko, en->ja) / ko / ja / en
     "model": "auto",          # auto(PC 사양에 맞게) / tiny / base / small / medium / large-v3-turbo
     "device_type": "auto",    # auto / cuda / cpu
-    "sensitivity": 60,        # 0~100 (높을수록 작은 소리도 인식)
-    "silence_sec": 0.6,       # 이 시간 이상 조용하면 발화 종료
+    "sensitivity": 50,        # 0~100 (높을수록 작은 소리도 인식)
+    "silence_sec": 0.4,       # 이 시간 이상 조용하면 발화 종료
     "max_sec": 12.0,          # 발화 최대 길이
     "show_original": True,    # 채팅박스에 원문도 같이 표시
     "vrc_mute_sync": True,    # VRChat 뮤트 상태 연동
     "osc_ip": "127.0.0.1",
     "osc_port": 9000,         # VRChat 입력 포트
     "osc_in_port": 9001,      # VRChat 출력 포트 (뮤트 감지용)
+    "noise_reduction": "low", # off / low / high (소음 제거)
+    "keep_model": True,       # 모델을 메모리에 유지 -> 시작 즉시
+    "live_preview": None,     # None = PC 사양에 따라 자동 (말하는 중 미리보기)
+    "vocab": "",              # 자주 쓰는 단어(이름 등) - 인식 도우미
+    "consent_done": False,    # 첫 실행 개인정보 안내를 봤는지
+    "consent_translate": False,  # 번역을 위해 인식된 문장을 Google 번역 서버로 전송하는 것에 동의
+    "consent_update": False,  # 새 버전 확인(github.com 접속)에 동의
     "last_seen_version": "",  # 업데이트 내역 자동 표시용
 }
 
@@ -46,7 +53,7 @@ DEFAULTS = {
 def load_config():
     cfg = dict(DEFAULTS)
     try:
-        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))  # 메모장 등이 붙인 BOM도 허용
         cfg.update({k: v for k, v in data.items() if k in DEFAULTS})
     except Exception:
         pass
@@ -54,7 +61,7 @@ def load_config():
         cfg["ui_lang"] = _system_ui_lang()
     if cfg["source"] not in ("auto", "ko", "ja", "en"):
         cfg["source"] = cfg["ui_lang"]  # 내가 쓰는 언어로 말한다고 가정 (작은 모델도 정확해짐)
-    if cfg["target"] not in ("ko", "ja", "en"):
+    if cfg["target"] not in ("ko", "ja", "en", "off"):  # off = 번역 없이 받아쓰기만
         cfg["target"] = {"ko": "ja", "ja": "ko"}.get(cfg["ui_lang"], "ja")
     return cfg
 

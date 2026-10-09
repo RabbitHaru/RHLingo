@@ -19,6 +19,13 @@ CHATBOX_LIMIT = 144
 CHATBOX_INTERVAL = 1.3  # VRChat 채팅박스 전송 최소 간격(초)
 MM_CODES = {"ko": "ko-KR", "ja": "ja-JP", "en": "en-US"}
 
+MODEL_REPOS = {
+    "tiny": "Systran/faster-whisper-tiny", "base": "Systran/faster-whisper-base",
+    "small": "Systran/faster-whisper-small", "medium": "Systran/faster-whisper-medium",
+    "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+}
+MODEL_SIZES_MB = {"tiny": 75, "base": 145, "small": 480, "medium": 1500, "large-v3-turbo": 1600}
+
 # Whisper가 무음/잡음에서 자주 내뱉는 환각 문구
 HALLUCINATIONS = (
     "ご視聴ありがとうございました", "ご視聴ありがとうございます", "チャンネル登録",
@@ -26,11 +33,13 @@ HALLUCINATIONS = (
     "thanks for watching", "thank you for watching", "subtitles by", "please subscribe",
 )
 
+NR_ALPHA = {"off": 0.0, "low": 1.0, "high": 2.0}  # 노이즈 제거 강도
 
-# ---------------------------------------------------------------- GPU(CUDA) 라이브러리 경로
+
+# ---------------------------------------------------------------- GPU(CUDA) 사용 가능 여부
 def _add_cuda_dll_dirs():
-    """pip로 설치된 nvidia-cublas/cudnn DLL(또는 exe에 포함된 것)을 찾아 등록. 없으면 CPU로 동작."""
-    roots = [Path(getattr(sys, "_MEIPASS", "")) / "nvidia"] if hasattr(sys, "_MEIPASS") else []
+    """pip로 설치된 nvidia-cublas/cudnn DLL(또는 exe에 포함된 것)을 찾아 등록."""
+    roots = [Path(sys._MEIPASS) / "nvidia"] if hasattr(sys, "_MEIPASS") else []
     roots += [Path(p) / "nvidia" for p in sys.path if p]
     for root in roots:
         for bin_dir in root.glob("*/bin") if root.is_dir() else []:
@@ -39,6 +48,203 @@ def _add_cuda_dll_dirs():
                 os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
             except OSError:
                 pass
+
+
+_cuda_ok = None
+
+
+def cuda_usable():
+    """라이브러리가 실제로 있을 때만 GPU 사용. (없는데 시도하면 재시도 때 멈추는 문제가 있어 미리 확인)"""
+    global _cuda_ok
+    if _cuda_ok is None:
+        try:
+            import ctypes
+            _add_cuda_dll_dirs()
+            ctypes.WinDLL("cublas64_12.dll")
+            ctypes.WinDLL("cudnn64_9.dll")
+            import ctranslate2
+            _cuda_ok = ctranslate2.get_cuda_device_count() > 0
+        except Exception:
+            _cuda_ok = False
+    return _cuda_ok
+
+
+# ---------------------------------------------------------------- 모델 관리
+def model_name(cfg):
+    """auto: PC 코어 수에 맞춰 가볍게 선택 (GPU 유무와 무관 -> 예상 못한 추가 다운로드 방지)."""
+    name = cfg["model"]
+    if name != "auto":
+        return name
+    cores = os.cpu_count() or 4
+    return "small" if cores >= 8 else "base" if cores >= 4 else "tiny"
+
+
+def model_cached(name):
+    snaps = MODEL_DIR / ("models--" + MODEL_REPOS[name].replace("/", "--")) / "snapshots"
+    return snaps.is_dir() and any((s / "model.bin").exists() for s in snaps.iterdir())
+
+
+def preview_default(device="cpu"):
+    return device == "cuda" or (os.cpu_count() or 4) >= 8
+
+
+def _dir_size(path):
+    total = 0
+    for root, _, files in os.walk(path):
+        for fn in files:
+            try:
+                total += os.path.getsize(os.path.join(root, fn))
+            except OSError:
+                pass
+    return total
+
+
+_MODEL_LOCK = threading.Lock()
+_MODEL = {"key": None, "model": None, "device": None}
+
+
+def release_model():
+    with _MODEL_LOCK:
+        _MODEL.update(key=None, model=None, device=None)
+    gc.collect()
+
+
+def get_model(cfg, progress=None):
+    """(모델, 장치) 반환. 같은 설정이면 메모리에 올려둔 모델을 재사용해 시작이 즉시 됩니다."""
+    name = model_name(cfg)
+    key = (name, cfg["device_type"])
+    with _MODEL_LOCK:
+        if _MODEL["key"] == key and _MODEL["model"] is not None:
+            return _MODEL["model"], _MODEL["device"]
+        _MODEL.update(key=None, model=None, device=None)
+        gc.collect()
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+        from faster_whisper import WhisperModel
+        MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+        cached = model_cached(name)
+        stop = threading.Event()
+        if progress is not None and not cached:  # 다운로드 진행률(폴더 크기 증가량으로 계산)
+            base, expected = _dir_size(MODEL_DIR), MODEL_SIZES_MB[name] * 1e6
+
+            def poll():
+                while not stop.is_set():
+                    progress(min(99, int((_dir_size(MODEL_DIR) - base) / expected * 100)))
+                    stop.wait(0.5)
+            threading.Thread(target=poll, daemon=True).start()
+
+        tries = ([("cuda", "float16")] if cfg["device_type"] in ("auto", "cuda") and cuda_usable() else [])
+        tries.append(("cpu", "int8"))
+        last = None
+        try:
+            for device, compute in tries:
+                try:
+                    m = WhisperModel(name, device=device, compute_type=compute, download_root=str(MODEL_DIR),
+                                     local_files_only=cached, cpu_threads=min(8, os.cpu_count() or 4))
+                    # 워밍업: 첫 인식이 느려지지 않게 미리 한 번 돌려둠 (GPU 오류도 여기서 걸러짐)
+                    list(m.transcribe(np.zeros(SR, dtype=np.float32), language="en")[0])
+                    _MODEL.update(key=key, model=m, device=device)
+                    return m, device
+                except Exception as e:
+                    last = e
+                    log_error(f"load_model {device}: {e!r}")
+            raise last
+        finally:
+            stop.set()
+            if progress is not None:
+                progress(None)
+
+
+# ---------------------------------------------------------------- 음량 / 민감도 / 소음
+def threshold_for(sensitivity):
+    """민감도(0~100) -> 음성 감지 기준 음량(RMS). 높을수록 작은 소리도 감지."""
+    return 0.002 + 0.05 * (1 - sensitivity / 100) ** 2
+
+
+def meter_value(rms):
+    """RMS -> 0~1 막대 길이 (작은 소리도 보이게 제곱근 스케일)."""
+    return min(1.0, (rms / 0.05) ** 0.5)
+
+
+class NoiseFloor:
+    """최근 6초의 '조용한 순간' 음량을 재서, 주변 소음이 크면 감지 기준을 자동으로 올림."""
+
+    def __init__(self):
+        self.hist = collections.deque(maxlen=120)
+        self.floor, self._n = 0.0, 0
+
+    def update(self, rms):
+        self.hist.append(rms)
+        self._n += 1
+        if self._n % 10 == 0 and len(self.hist) >= 20:
+            self.floor = float(np.percentile(self.hist, 20))
+
+    def threshold(self, sensitivity):
+        base = threshold_for(sensitivity)
+        return max(base, min(self.floor * 2.5, base * 2.5))  # 자동 상승은 최대 2.5배까지
+
+
+_N, _HOP = 1024, 256
+_WIN = np.hanning(_N).astype(np.float32)
+
+
+def noise_spectrum(chunk):
+    """조용한 구간 한 조각의 크기 스펙트럼 (노이즈 프로필용)."""
+    w = np.hanning(len(chunk)).astype(np.float32)
+    return np.abs(np.fft.rfft(chunk * w, n=_N)) / (w.sum() / 2)
+
+
+def denoise(audio, noise_mag, alpha):
+    """스펙트럼 게이팅: 조용한 구간에서 측정한 소음 프로필을 빼고, 80Hz 이하 저음 잡음도 제거."""
+    if noise_mag is None or alpha <= 0 or len(audio) < _N:
+        return audio
+    x = np.pad(audio, (_N, _N))
+    n_frames = 1 + (len(x) - _N) // _HOP
+    idx = np.arange(_N)[None, :] + _HOP * np.arange(n_frames)[:, None]
+    spec = np.fft.rfft(x[idx] * _WIN, axis=1)
+    mag = np.abs(spec) / (_WIN.sum() / 2)
+    mask = np.clip(1 - alpha * noise_mag[None, :] / np.maximum(mag, 1e-8), 0.08, 1.0)
+    mask[:, :5] = 0.0  # 80Hz 이하
+    frames = np.fft.irfft(spec * mask, n=_N, axis=1) * _WIN
+    out = np.zeros(len(x), dtype=np.float32)
+    for i in range(n_frames):
+        out[i * _HOP:i * _HOP + _N] += frames[i]
+    return (out / 1.5)[_N:-_N].astype(np.float32)
+
+
+class MicMonitor:
+    """모델 없이 마이크 음량만 측정 (설정 창에서 민감도 맞출 때 사용)."""
+
+    def __init__(self, mic):
+        self.mic, self.level, self._stream = mic, 0.0, None
+        self.nf = NoiseFloor()
+
+    def start(self):
+        try:
+            import sounddevice as sd
+            dev = _resolve_mic(self.mic)
+            rate = int(sd.query_devices(dev, "input")["default_samplerate"])
+            self._stream = sd.InputStream(samplerate=rate, channels=1, dtype="float32", device=dev,
+                                          callback=self._cb, blocksize=int(rate * CHUNK_SEC))
+            self._stream.start()
+        except Exception as e:
+            log_error(f"mic monitor: {e}")
+            self._stream = None
+
+    def _cb(self, indata, frames, t, status):
+        rms = float(np.sqrt(np.mean(indata ** 2)))
+        self.nf.update(rms)
+        self.level = max(rms, self.level * 0.85)  # 천천히 내려오게 해서 읽기 쉽게
+
+    def stop(self):
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
 
 
 # ---------------------------------------------------------------- 마이크 목록
@@ -151,8 +357,8 @@ class Output:
 
 # ---------------------------------------------------------------- 엔진
 class Engine:
-    """start() 하면 모델 로딩 -> 마이크 수신 -> 인식 -> 번역 -> 전송.
-    UI와는 events 큐(("result"|"error"|"info", ...))로만 통신합니다."""
+    """start() 하면 모델 준비 -> 마이크 수신 -> 인식 -> 번역 -> 전송.
+    UI와는 events 큐(("result"|"partial"|"error"|"info", ...))로만 통신합니다."""
 
     def __init__(self, cfg, output, events):
         self.cfg, self.out, self.events = cfg, output, events
@@ -160,11 +366,17 @@ class Engine:
         self.ready = False
         self.paused = False
         self.vrc_muted = False
+        self.speaking = False
         self.level = 0.0
+        self.dl_pct = None  # 모델 다운로드 진행률 (None = 해당 없음)
+        self.device = "cpu"
         self.model = None
         self.in_sr = SR
+        self.nf = NoiseFloor()
+        self.noise_mag = None
         self.audio_q = queue.Queue()
         self.utt_q = queue.Queue()
+        self.partial_q = queue.Queue(maxsize=1)
         self._osc_server = None
         self._thread = None
 
@@ -180,41 +392,12 @@ class Engine:
     def stop(self):
         self.running = False
 
-    # -- 모델 -------------------------------------------------------------
-    def _model_name(self, device):
-        """auto: GPU면 small, CPU면 코어 수에 맞춰 가볍게 선택 (가벼움 우선)."""
-        name = self.cfg["model"]
-        if name != "auto":
-            return name
-        cores = os.cpu_count() or 4
-        return "small" if device == "cuda" or cores >= 8 else "base" if cores >= 4 else "tiny"
-
-    def _load_model(self):
-        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-        _add_cuda_dll_dirs()
-        from faster_whisper import WhisperModel
-        MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        dev = self.cfg["device_type"]
-        tries = ([("cuda", "float16")] if dev in ("auto", "cuda") else []) + [("cpu", "int8")]
-        last = None
-        for device, compute in tries:
-            try:
-                m = WhisperModel(self._model_name(device), device=device, compute_type=compute,
-                                 download_root=str(MODEL_DIR), cpu_threads=4)
-                # 워밍업: GPU 라이브러리가 없으면 여기서 실패 -> CPU로 자동 전환
-                list(m.transcribe(np.zeros(SR, dtype=np.float32), language="en")[0])
-                return m, device
-            except Exception as e:
-                last = e
-                log_error(f"load_model {device}: {e}")
-        raise last
-
     # -- 메인 스레드 ------------------------------------------------------
     def _run(self):
         stream = None
         try:
-            self.model, device = self._load_model()
-            self.events.put(("info", "info_gpu" if device == "cuda" else "info_cpu"))
+            self.model, self.device = get_model(self.cfg, lambda p: setattr(self, "dl_pct", p))
+            self.events.put(("info", "info_gpu" if self.device == "cuda" else "info_cpu"))
             threading.Thread(target=self._worker, daemon=True).start()
             self._start_mute_listener()
             stream = self._open_stream()
@@ -226,6 +409,7 @@ class Engine:
         finally:
             self.running = False
             self.ready = False
+            self.speaking = False
             if stream is not None:
                 try:
                     stream.stop()
@@ -235,7 +419,8 @@ class Engine:
             if self._osc_server is not None:
                 threading.Thread(target=self._osc_server.shutdown, daemon=True).start()
             self.model = None
-            gc.collect()
+            if not self.cfg.get("keep_model", True):
+                release_model()
 
     def _open_stream(self):
         import sounddevice as sd
@@ -279,10 +464,14 @@ class Engine:
             self.events.put(("info", "info_osc_busy"))
 
     # -- 음성 구간 자르기 -------------------------------------------------
+    def _preview_on(self):
+        p = self.cfg.get("live_preview")
+        return preview_default(self.device) if p is None else bool(p)
+
     def _capture_loop(self):
         c = self.cfg
         pre = collections.deque(maxlen=6)  # 말 시작 직전 0.3초 (첫 음절 잘림 방지)
-        buf, speaking, silent, voiced = [], False, 0.0, 0.0
+        buf, silent, voiced, total, last_partial = [], 0.0, 0.0, 0.0, 0.0
         while self.running:
             try:
                 chunk = self.audio_q.get(timeout=0.2)
@@ -291,66 +480,102 @@ class Engine:
             dur = len(chunk) / SR
             rms = float(np.sqrt(np.mean(chunk ** 2)))
             self.level = rms
+            self.nf.update(rms)
             if self.paused or self.vrc_muted:
-                buf, speaking, silent, voiced = [], False, 0.0, 0.0
+                buf, silent, voiced, total = [], 0.0, 0.0, 0.0
+                self.speaking = False
                 pre.clear()
                 continue
-            threshold = 0.002 + 0.05 * (1 - c["sensitivity"] / 100) ** 2
-            if rms > threshold:
-                if not speaking:
-                    speaking, buf, voiced = True, list(pre), 0.0
+            thr = self.nf.threshold(c["sensitivity"])
+            if rms > thr:
+                if not self.speaking:
+                    self.speaking, buf, voiced = True, list(pre), 0.0
+                    total, last_partial = len(buf) * dur, 0.0
                 silent = 0.0
                 voiced += dur
-            elif speaking:
+            elif self.speaking:
                 silent += dur
-            if speaking:
+            if self.speaking:
                 buf.append(chunk)
-                total = sum(len(b) for b in buf) / SR
+                total += dur
                 if silent >= c["silence_sec"] or total >= c["max_sec"]:
-                    if voiced >= 0.25:
+                    if voiced >= 0.35:
                         while self.utt_q.qsize() >= 3:
                             try:
                                 self.utt_q.get_nowait()
                             except queue.Empty:
                                 break
                         self.utt_q.put(np.concatenate(buf))
-                    buf, speaking, silent, voiced = [], False, 0.0, 0.0
+                    buf, silent, voiced, total = [], 0.0, 0.0, 0.0
+                    self.speaking = False
+                elif (total >= 0.8 and total - last_partial >= 1.0 and self.utt_q.empty()
+                      and self.partial_q.empty() and self._preview_on()):
+                    last_partial = total
+                    self.partial_q.put_nowait(np.concatenate(buf))  # 말하는 중 미리보기용
             else:
                 pre.append(chunk)
+                if rms < thr:  # 조용한 구간으로 소음 프로필 갱신
+                    m = noise_spectrum(chunk)
+                    self.noise_mag = m if self.noise_mag is None else 0.95 * self.noise_mag + 0.05 * m
 
     # -- 인식 + 번역 ------------------------------------------------------
     def _worker(self):
         while self.running:
             try:
-                audio = self.utt_q.get(timeout=0.2)
+                audio = self.utt_q.get(timeout=0.05)
             except queue.Empty:
+                try:
+                    part = self.partial_q.get_nowait()
+                except queue.Empty:
+                    continue
+                try:
+                    self._partial(part)
+                except Exception as e:
+                    log_error(f"partial: {e!r}")
                 continue
             try:
                 self._process(audio)
             except Exception as e:
-                log_error(f"process: {e!r}")
+                log_error(f"process: {type(e).__name__}")
                 self.events.put(("error", str(e)))
+
+    def _transcribe(self, audio):
+        c = self.cfg
+        audio = denoise(audio, self.noise_mag, NR_ALPHA.get(c.get("noise_reduction", "low"), 1.0))
+        peak = float(np.max(np.abs(audio)))
+        if 0.01 < peak < 0.5:  # 작은 마이크 소리를 키워 인식률 향상
+            audio = audio * (0.7 / peak)
+        lang = None if c["source"] == "auto" else c["source"]
+        segs, info = self.model.transcribe(
+            audio, language=lang, beam_size=1, vad_filter=True, condition_on_previous_text=False,
+            temperature=0.0, without_timestamps=True, hotwords=(c["vocab"].strip() or None))
+        text = "".join(s.text for s in segs if s.no_speech_prob < 0.6 and s.avg_logprob > -1.2).strip()
+        low = text.lower()
+        if any(h in low and len(low) < len(h) + 12 for h in HALLUCINATIONS):
+            text = ""
+        return text, info.language
+
+    def _partial(self, audio):
+        text, _ = self._transcribe(audio)
+        if text and self.speaking:  # 이미 말이 끝났으면 버림
+            self.events.put(("partial", text))
 
     def _process(self, audio):
         c = self.cfg
         self.out.typing(True)
-        lang = None if c["source"] == "auto" else c["source"]
-        segs, info = self.model.transcribe(
-            audio, language=lang, beam_size=1, vad_filter=True, condition_on_previous_text=False)
-        text = "".join(s.text for s in segs if s.no_speech_prob < 0.6 and s.avg_logprob > -1.2).strip()
-        low = text.lower()
-        if not text or any(h in low and len(low) < len(h) + 12 for h in HALLUCINATIONS):
+        text, src = self._transcribe(audio)
+        if not text:
             self.out.typing(False)
             return
-        src, tgt = info.language, c["target"]
+        tgt = c["target"] if c.get("consent_translate") else "off"  # 동의 없으면 번역(외부 전송) 안 함
         out = text
-        if src != tgt:
+        if tgt != "off" and src != tgt:
             try:
                 out = translate_text(text, src, tgt)
             except Exception as e:
-                log_error(f"translate: {e!r}")
+                log_error(f"translate: {type(e).__name__}")
                 self.events.put(("error", f"translate: {e}"))
                 self.out.typing(False)
                 return
-        self.out.send(format_chatbox(out, text, c["show_original"]))
+        self.out.send(format_chatbox(out, text, c["show_original"] and tgt != "off"))
         self.events.put(("result", src, tgt, text, out))

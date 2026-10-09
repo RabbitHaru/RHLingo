@@ -6,6 +6,7 @@ if not exist "%PY%" set PY=python
 "%PY%" -m pip install pyinstaller
 "%PY%" -m PyInstaller --noconfirm --clean --windowed --name RabbitHaruTranslator ^
   --add-data "CHANGELOG.md;." ^
+  --add-data "PRIVACY.ko.md;." --add-data "PRIVACY.en.md;." --add-data "PRIVACY.ja.md;." ^
   --collect-all customtkinter ^
   --collect-all faster_whisper ^
   --collect-all ctranslate2 ^
