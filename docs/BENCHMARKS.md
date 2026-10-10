@@ -104,3 +104,17 @@ Same corpus and noise conditions for every model (beta.3 engine, CPU only). CER 
 | High quality (M2M100 1.2B) | 1.25 GB | +1236 MB | 36.6 | 44.2 | 38.2 | 30.5 | 0.81 s |
 
 - **Standard is the better default**: the high-quality model is +3.2 chrF on average but needs 2.5× the memory, is slower, and is worse for Korean → Japanese. It helps mostly for Japanese → Korean (+14.6) and Korean → English (+7.0).
+
+## 6. GPU (NVIDIA RTX 5080, optional acceleration pack)
+
+Same corpus and conditions as section 5, speech models on the GPU (float16) with the optional pack (cuBLAS 12.9 + cuDNN 9.27, 1.24 GB download). Measured while VRChat was running.
+
+| Speech model | Device | Recognition step | CER (mean) | Clean | Fan | Keyboard | Background voices |
+|---|---|---|---|---|---|---|---|
+| small | CPU | 439 ms | 10.0% | 1.2% | 14.6% | 26.8% | 7.1% |
+| small | **GPU** | 85 ms | 9.3% | 0.9% | 12.2% | 27.1% | 5.2% |
+| large-v3-turbo | CPU | 1098 ms | 9.5% | 3.8% | 8.1% | 27.1% | 5.6% |
+| large-v3-turbo | **GPU** | **59 ms** | **8.0%** | 0.2% | 8.5% | 27.6% | 2.9% |
+
+- With an NVIDIA GPU, **large-v3-turbo on the GPU is the best choice**: about 18× faster than the same model on the CPU, and the most accurate of the models measured on a GPU or CPU except medium on the CPU (7.1%, but about 20× slower).
+- Without a GPU, small stays the best value.

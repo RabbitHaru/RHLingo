@@ -21,7 +21,7 @@ import numpy as np
 from pythonosc.udp_client import SimpleUDPClient
 
 from . import secret
-from .config import MODEL_DIR, log_error, save_config
+from .config import GPU_DIR, MODEL_DIR, log_error, save_config
 
 SR = 16000
 CHUNK_SEC = 0.05
@@ -58,6 +58,7 @@ NR_ALPHA = {"off": 0.0, "low": 1.0, "high": 2.0}  # 노이즈 제거 강도
 def _add_cuda_dll_dirs():
     """pip로 설치된 nvidia-cublas/cudnn DLL(또는 exe에 포함된 것)을 찾아 등록."""
     roots = [Path(sys._MEIPASS) / "nvidia"] if hasattr(sys, "_MEIPASS") else []
+    roots += [GPU_DIR / "nvidia"]  # 앱이 허락받고 받아 둔 GPU 가속 팩
     roots += [Path(p) / "nvidia" for p in sys.path if p]
     for root in roots:
         for bin_dir in root.glob("*/bin") if root.is_dir() else []:
@@ -69,6 +70,12 @@ def _add_cuda_dll_dirs():
 
 
 _cuda_ok = None
+
+
+def reset_cuda_check():
+    """GPU 가속 팩을 설치/삭제한 뒤 다시 확인하게 함."""
+    global _cuda_ok
+    _cuda_ok = None
 
 
 def cuda_usable():
@@ -85,6 +92,21 @@ def cuda_usable():
         except Exception:
             _cuda_ok = False
     return _cuda_ok
+
+
+_gpu_present = None
+
+
+def gpu_present():
+    """NVIDIA GPU 가 있는지 (가속 팩이 없어도 확인 가능). 한 번만 확인."""
+    global _gpu_present
+    if _gpu_present is None:
+        try:
+            import ctranslate2
+            _gpu_present = ctranslate2.get_cuda_device_count() > 0
+        except Exception:
+            _gpu_present = False
+    return _gpu_present
 
 
 # ---------------------------------------------------------------- 모델 관리
@@ -479,26 +501,40 @@ class TranslateError(Exception):
     pass
 
 
-def _http_json(url, body=None, headers=None, timeout=8):
-    data = None if body is None else json.dumps(body).encode("utf-8")
-    h = {"User-Agent": "RHLingo", **(headers or {})}
-    req = urllib.request.Request(url, data=data, headers=h, method="GET" if body is None else "POST")
+def _send(req, timeout):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         detail = ""
         try:
-            detail = json.loads(e.read().decode("utf-8", "ignore")).get("error", {}).get("message", "")
+            j = json.loads(e.read().decode("utf-8", "ignore"))
+            err = j.get("error")
+            detail = (err.get("message") or err.get("errorCode") or "") if isinstance(err, dict) else str(j.get("errorMessage") or j.get("message") or "")
         except Exception:
             pass
         if e.code == 400 and "api key" in detail.lower():
             raise TranslateError("invalid API key")
+        if e.code == 400 and detail:
+            raise TranslateError(f"HTTP 400: {detail[:80]}")
         raise TranslateError({401: "invalid API key", 403: "invalid API key", 404: "model not found",
                               429: "rate limited / quota exceeded",
                               456: "monthly quota exceeded"}.get(e.code, f"HTTP {e.code}"))
     except (urllib.error.URLError, TimeoutError, OSError):
         raise TranslateError("network error")
+
+
+def _http_json(url, body=None, headers=None, timeout=8):
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    h = {"User-Agent": "RHLingo", **(headers or {})}
+    return _send(urllib.request.Request(url, data=data, headers=h, method="GET" if body is None else "POST"), timeout)
+
+
+def _http_form(url, fields, headers=None, timeout=8):
+    """application/x-www-form-urlencoded 로 POST (파파고)."""
+    data = urllib.parse.urlencode(fields).encode("utf-8")
+    h = {"User-Agent": "RHLingo", "Content-Type": "application/x-www-form-urlencoded", **(headers or {})}
+    return _send(urllib.request.Request(url, data=data, headers=h, method="POST"), timeout)
 
 
 def _mymemory(text, src, tgt, key=None, cfg=None):
@@ -519,6 +555,51 @@ def _deepl(text, src, tgt, key, cfg=None):
     r = _http_json(f"https://{host}/v2/translate", body,
                    {"Authorization": f"DeepL-Auth-Key {key}", "Content-Type": "application/json"})
     return r["translations"][0]["text"]
+
+
+def _google_cloud(text, src, tgt, key, cfg=None):
+    body = {"q": text, "target": tgt, "format": "text"}
+    if src in MM_CODES:
+        body["source"] = src
+    r = _http_json("https://translation.googleapis.com/language/translate/v2", body,
+                   {"X-goog-api-key": key, "Content-Type": "application/json"})
+    return html.unescape(r["data"]["translations"][0]["translatedText"])
+
+
+def _guess_lang(text):
+    """글자 종류로 한/일/영을 대충 구분 (원문 언어를 모를 때: 직접 입력 번역 등)."""
+    if re.search(r"[가-힣]", text):
+        return "ko"
+    if re.search(r"[ぁ-んァ-ヶ]", text):
+        return "ja"
+    return "en"
+
+
+def _find_key(obj, name):
+    if isinstance(obj, dict):
+        if name in obj:
+            return obj[name]
+        for v in obj.values():
+            r = _find_key(v, name)
+            if r is not None:
+                return r
+    return None
+
+
+def _papago(text, src, tgt, key, cfg=None):
+    """Papago Translation (NAVER Cloud Platform 공식 API, 종량제). 키는 'Client ID:Client Secret' 형태."""
+    cid, _, secret_key = key.partition(":")
+    if not cid or not secret_key:
+        raise TranslateError("API key must be Client ID:Client Secret")
+    src = src if src in MM_CODES else _guess_lang(text)
+    if src == tgt:
+        return text
+    r = _http_form("https://papago.apigw.ntruss.com/nmt/v1/translation", {"source": src, "target": tgt, "text": text},
+                   {"X-NCP-APIGW-API-KEY-ID": cid.strip(), "X-NCP-APIGW-API-KEY": secret_key.strip()})
+    out = _find_key(r, "translatedText")
+    if not isinstance(out, str):
+        raise TranslateError("unexpected response")
+    return out
 
 
 # ---------------------------------------------------------------- 오프라인 번역 (M2M100, MIT 라이선스)
@@ -812,7 +893,8 @@ def _gemini(text, src, tgt, key, cfg=None):
     return out
 
 
-PROVIDERS = {"local": (_local, False), "mymemory": (_mymemory, False), "deepl": (_deepl, True), "gemini": (_gemini, True)}
+PROVIDERS = {"local": (_local, False), "mymemory": (_mymemory, False), "deepl": (_deepl, True),
+             "papago": (_papago, True), "google": (_google_cloud, True), "gemini": (_gemini, True)}
 
 
 def translation_allowed(cfg):

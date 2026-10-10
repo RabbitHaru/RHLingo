@@ -13,6 +13,8 @@ The app has no accounts, analytics, ads or remote logging.
    - To: the ONE translation service you pick in Settings (all official APIs)
        · MyMemory (no key, daily usage limit)
        · DeepL (your own API key)
+       · Papago by NAVER Cloud (your own key; paid pay-as-you-go service)
+       · Google Cloud Translation (your own API key; billing required)
        · Google Gemini API (your own Google AI Studio key). Content sent with a free quota may be used by Google to improve its products and reviewed by humans, and Google asks you not to send personal or confidential information (paid use with billing enabled is treated differently)
      Servers may be abroad. If a request fails, the text is never silently sent to another service.
    - Purpose: translation. The developer stores nothing; each service has its own privacy policy.
@@ -21,13 +23,15 @@ The app has no accounts, analytics, ads or remote logging.
 2) Model downloads (speech recognition model, offline translation model) - you are told the size and asked every time (huggingface.co). Downloaded files are verified by checksum (SHA-256).
    - Using an already downloaded model needs no internet access.
 3) Update check - optional (off by default). When on, or when you press "Check for updates now", it asks github.com for the list of releases. Installing an update is never automatic: the app asks every time, shows the download size, downloads the installer from this project's GitHub releases, verifies its SHA-256 checksum (a file that fails is discarded), and only then runs it.
-4) Sending to VRChat - only to VRChat on the same PC (127.0.0.1). Text shown in the VRChat chatbox is visible to others in your world, so what you say is your responsibility.
-5) Feedback - the button opens a GitHub issue form in your browser; you review and submit it yourself. App version, Windows version and model name are pre-filled, so check before submitting.
+4) GPU acceleration pack - optional, only if you press the button and agree. It downloads NVIDIA's official libraries (cuBLAS, cuDNN) from pypi.org / files.pythonhosted.org; the app tells you the size first, verifies the SHA-256 checksum (a file that fails is discarded) and stores the DLLs in %APPDATA%\RabbitHaru\gpu. Delete it any time in Settings → Models.
+5) Sending to VRChat - only to VRChat on the same PC (127.0.0.1). Text shown in the VRChat chatbox is visible to others in your world, so what you say is your responsibility.
+6) Feedback - the button opens a GitHub issue form in your browser; you review and submit it yourself. App version, Windows version and model name are pre-filled, so check before submitting.
 
 ■ Stored on your PC (in %APPDATA%\RabbitHaru)
 - config.json: settings (selected microphone name, languages, consent choices, encrypted API keys)
 - log.txt: error log (no conversation content)
 - models\: downloaded speech and translation models
+- gpu\: the optional GPU acceleration pack (only if you installed it)
 - Settings → Privacy → "Delete all local data" removes everything at once.
 
 ■ Contact: Issues on the GitHub repository

@@ -3743,3 +3743,5 @@ Apache License 2.0 full text: https://www.apache.org/licenses/LICENSE-2.0
 
 Installer: Inno Setup (Jordan Russell / Martijn Laan, Inno Setup License) — https://jrsoftware.org/isinfo.php
 Korean/Japanese installer translations: Inno Setup unofficial translations (see the Inno Setup distribution).
+
+Optional GPU acceleration pack (NOT bundled): NVIDIA cuBLAS and cuDNN libraries are downloaded only on the user's request from PyPI (nvidia-cublas-cu12, nvidia-cudnn-cu12) and are governed by NVIDIA's license terms.

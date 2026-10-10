@@ -11,6 +11,7 @@ APP_VERSION = "1.0.0-beta.3"
 DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "RabbitHaru"
 CONFIG_PATH = DATA_DIR / "config.json"
 MODEL_DIR = DATA_DIR / "models"
+GPU_DIR = Path(os.environ.get("RHL_GPU_DIR") or DATA_DIR / "gpu")  # 선택 기능(GPU 가속 팩)의 NVIDIA 라이브러리
 LOG_PATH = DATA_DIR / "log.txt"
 
 
@@ -46,7 +47,7 @@ DEFAULTS = {
     "hotkey": "off",  # 일시정지/재개 전역 단축키 (off 또는 hotkey.HOTKEYS 의 키)
     "hotkey": "off",  # 일시정지/재개 전역 단축키 (off 또는 hotkey.HOTKEYS 의 키)
     "vocab": "",              # 자주 쓰는 단어(이름 등) - 인식 도우미
-    "translator": "local",    # local(오프라인·한도 없음, 기본) / mymemory(키 없음) / deepl / gemini (사용자 본인의 공식 API 키)
+    "translator": "local",    # local(오프라인·한도 없음, 기본) / mymemory(키 없음) / deepl / papago / google / gemini (사용자 본인의 공식 API 키)
     "mt_quality": "standard", # 오프라인 번역 품질: standard(가볍고 빠름) / high(더 자연스러움, 1.25GB)
     "gemini_model": "",       # 비우면 기본(gemini-flash-lite-latest). 모델이 종료되면 자동으로 찾아서 기억
     "api_keys": {},           # {서비스: DPAPI로 암호화된 키}
@@ -64,7 +65,7 @@ def load_config():
         cfg.update({k: v for k, v in data.items() if k in DEFAULTS})
     except Exception:
         pass
-    if cfg["translator"] not in ("local", "mymemory", "deepl", "gemini"):  # 예전 버전에서 고른 서비스(예: google)는 오프라인으로
+    if cfg["translator"] not in ("local", "mymemory", "deepl", "papago", "google", "gemini"):  # 예전 버전에서 고른 서비스(예: google)는 오프라인으로
         cfg["translator"] = "local"
     if cfg["ui_lang"] not in ("ko", "ja", "en"):
         cfg["ui_lang"] = _system_ui_lang()

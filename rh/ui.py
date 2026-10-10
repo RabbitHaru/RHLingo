@@ -17,9 +17,9 @@ from pathlib import Path
 
 import customtkinter as ctk
 
-from . import hotkey, i18n, links, secret, updater
+from . import gpu, hotkey, i18n, links, secret, updater
 from .config import APP_NAME, APP_VERSION, DATA_DIR, load_config, log_error, save_config
-from .engine import (MODEL_SIZES_MB, MT_MODELS, Engine, MicMonitor, Output, TranslateError, calibrate_sensitivity,
+from .engine import (cuda_usable, gpu_present, reset_cuda_check, MODEL_SIZES_MB, MT_MODELS, Engine, MicMonitor, Output, TranslateError, calibrate_sensitivity,
                      delete_stt, download_mt, download_stt,
                      format_chatbox, get_model, list_mics, meter_value, model_cached, model_name, mt_cached,
                      mt_dir, mt_tier, preview_default, release_model, release_mt, threshold_for, translate_text,
@@ -34,9 +34,11 @@ FIELD_H = ("#E0DBFA", "#363652")
 TEXT, SUB = ("#26224A", "#ECE9FF"), ("#7B7799", "#9593B5")
 GREEN, ORANGE, RED = ("#1FA971", "#6EE7A8"), ("#D98A1F", "#FFC46B"), ("#D93A5C", "#FF8AA0")
 MAX_BUBBLES = 60
+GPU_PACK_MB, GPU_PACK_DISK_MB = 1240, 1830  # 안내용 대략 크기 (실제 받을 때는 PyPI 가 알려 주는 값)
 IDLE_RELEASE_MS = 5 * 60 * 1000  # 멈춘 채 이만큼 지나면 모델을 메모리에서 내림
 RESTART_KEYS = {"mic", "model", "device_type", "vrc_mute_sync", "osc_ip", "osc_port", "osc_in_port"}
-KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "gemini": "https://aistudio.google.com/apikey"}
+KEY_URLS = {"deepl": "https://www.deepl.com/pro-api", "papago": "https://www.ncloud.com/product/aiService/papagoTranslation",
+            "google": "https://cloud.google.com/translate/docs/setup", "gemini": "https://aistudio.google.com/apikey"}
 
 
 warnings.filterwarnings("ignore", message=".*not CTkImage.*")
@@ -201,6 +203,7 @@ class MainWindow(ctk.CTk):
         self._mt_pct = None  # 오프라인 번역 모델 다운로드 진행률
         self._stt_pct = None  # 음성 인식 모델 다운로드 진행률
         self._stt_dl = self._mt_dl = None  # 지금 받는 중인 모델 이름
+        self._gpu_pct = None  # GPU 가속 팩 다운로드 진행률
         self.update_info = None
         self.hotkey = hotkey.Hotkey(lambda: self.events.put(("hotkey",)))
         self.build()
@@ -488,6 +491,10 @@ class MainWindow(ctk.CTk):
             if e is not None and e.running:
                 self.toggle_pause()
                 self._beep(e.paused)
+        elif kind == "gpu_done":
+            self.add_bubble(T("gpu_ready"), kind="sys")
+            if self.engine is None:
+                release_model()  # 다음 시작부터 GPU 로 불러오도록
         elif kind == "update_none":
             if ev[1]:
                 ev[1](T("up_latest"))
@@ -588,6 +595,36 @@ class MainWindow(ctk.CTk):
                 self._stt_dl = None
         threading.Thread(target=run, daemon=True).start()
         return True
+
+    def ensure_gpu_pack(self):
+        """GPU 가속 팩(NVIDIA 라이브러리)을 크기를 알리고 허락받아 백그라운드로 받음. False = 거절/이미 진행 중."""
+        if gpu.installed() or self._gpu_pct is not None:
+            return False
+        body = T("gpu_ask_body").format(mb=GPU_PACK_MB, disk=GPU_PACK_DISK_MB)
+        if not ask(self, T("gpu_ask_title"), body, T("dl_yes"), T("dl_no")):
+            return False
+        self._gpu_pct = 0
+
+        def run():
+            try:
+                gpu.download_pack(gpu.pack_info(), lambda p: setattr(self, "_gpu_pct", p))
+                reset_cuda_check()
+                self.events.put(("gpu_done",))
+            except ValueError:
+                self.events.put(("info", "gpu_bad"))
+            except Exception as e:
+                log_error(f"gpu pack: {type(e).__name__}")
+                self.events.put(("error", f"{T('gpu_progress')}: {type(e).__name__}"))
+            finally:
+                self._gpu_pct = None
+        threading.Thread(target=run, daemon=True).start()
+        return True
+
+    def remove_gpu_pack(self):
+        if self.engine is None:
+            release_model()
+        gpu.remove_pack()
+        reset_cuda_check()
 
     def ensure_mt(self, force=False):
         """오프라인 번역 모델이 필요하면 크기를 알리고 허락받아 백그라운드로 내려받음. False = 거절."""
@@ -870,6 +907,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self.group(T("sec_models"))
         self._build_stt_card()
         self.option("device_type", T("device"), [("auto", T("dev_auto")), ("cuda", T("dev_gpu")), ("cpu", T("dev_cpu"))])
+        self.group(T("gpu_title"))
+        self._build_gpu_card()
         self.group(T("mt_card_title"))
         self._build_mt_card()
         ctk.CTkLabel(self.body, text=T("sm_hint") + "  " + T("restart_note"), font=f(11), text_color=SUB, anchor="w",
@@ -879,7 +918,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.section(T("sec_translate"))
         prov = self.option("translator", T("tr_provider"),
                     [("local", T("tp_local")), ("mymemory", T("tp_mymemory")), ("deepl", T("tp_deepl")),
-                     ("gemini", T("tp_gemini"))], cb=lambda v: self._refresh_key_ui())
+                     ("papago", T("tp_papago")), ("google", T("tp_google")), ("gemini", T("tp_gemini"))], cb=lambda v: self._refresh_key_ui())
         self._prov_card = prov.master
         # 오프라인을 골랐을 때: 모델 상태 + '모델' 페이지로 가는 버튼 (다운로드 버튼을 찾기 쉽게)
         self.local_card = ctk.CTkFrame(self.body, fg_color=CARD, corner_radius=20)
@@ -916,6 +955,9 @@ class SettingsWindow(ctk.CTkToplevel):
         self.gem_entry.bind("<FocusOut>", self._save_gem_model)
         ctk.CTkLabel(self.gem_card, text="⚠ " + T("tr_gemini_note"), font=f(11), text_color=ORANGE, anchor="w", justify="left",
                      wraplength=520).pack(fill="x", padx=16, pady=(8, 12))
+        self.paid_card = ctk.CTkFrame(self.body, fg_color=CARD, corner_radius=20)
+        self.paid_lbl = ctk.CTkLabel(self.paid_card, text="", font=f(12), text_color=ORANGE, anchor="w", justify="left", wraplength=520)
+        self.paid_lbl.pack(fill="x", padx=16, pady=12)
         tip = ctk.CTkFrame(self.body, fg_color=FIELD, corner_radius=16)
         tip.pack(fill="x", padx=4, pady=6)
         ctk.CTkLabel(tip, text="💡 " + T("tr_tip"), font=f(12), text_color=TEXT, anchor="w", justify="left",
@@ -1130,6 +1172,8 @@ class SettingsWindow(ctk.CTkToplevel):
             self._refresh_mt()
         if self._n % 12 == 0 and hasattr(self, "stt_rows"):
             self._refresh_stt()
+        if self._n % 12 == 0 and hasattr(self, "gpu_lbl"):
+            self._refresh_gpu()
         e = self.app.engine
         if e is not None and e.ready:  # 인식 중이면 엔진의 음량을 그대로 사용
             self._stop_monitor()
@@ -1169,12 +1213,14 @@ class SettingsWindow(ctk.CTkToplevel):
         saved = bool(self.cfg["api_keys"].get(p))
         self.key_entry.configure(state="normal")
         self.key_entry.delete(0, "end")
-        self.key_entry.configure(placeholder_text=T("tr_key_saved") if saved else T("tr_key_hint"),
+        hint = T("tr_key_hint_papago") if p == "papago" else T("tr_key_hint")
+        self.key_entry.configure(placeholder_text=T("tr_key_saved") if saved else hint,
                                  state="normal" if needs else "disabled")
         # 고른 서비스에 필요한 카드만: 오프라인 -> 모델 상태 카드 / Gemini -> 모델 이름 + 경고 / 키가 필요한 서비스 -> API 키 카드
         anchor = self._prov_card
         self.local_card.pack_forget()
         self.gem_card.pack_forget()
+        self.paid_card.pack_forget()
         if p == "local":
             self.local_card.pack(fill="x", padx=4, pady=5, after=anchor)
             anchor = self.local_card
@@ -1182,6 +1228,10 @@ class SettingsWindow(ctk.CTkToplevel):
         elif p == "gemini":
             self.gem_card.pack(fill="x", padx=4, pady=5, after=anchor)
             anchor = self.gem_card
+        elif p in ("papago", "google"):
+            self.paid_lbl.configure(text="⚠ " + T("tr_paid_" + p))
+            self.paid_card.pack(fill="x", padx=4, pady=5, after=anchor)
+            anchor = self.paid_card
         self._key_card.pack_forget()
         if needs:
             self._key_card.pack(fill="x", padx=4, pady=5, after=anchor)
@@ -1296,6 +1346,8 @@ class SettingsWindow(ctk.CTkToplevel):
                 self._set(st, text=f"⏳ {T('dl_progress')} {self.app._stt_pct}%", text_color=ORANGE)
             else:
                 label = (T("sm_installed") if ok else T("sm_none")) + ((" · " + T("sm_inuse")) if m == using and ok else "")
+                if m == "large-v3-turbo" and cuda_usable():
+                    label = "🚀 GPU · " + label
                 self._set(st, text=label, text_color=GREEN if ok else SUB)
             busy = (not ok and self.app._stt_pct is not None) or (ok and m == using and running)
             self._set(btn, state="disabled" if busy else "normal", **self._action_style(ok, busy))
@@ -1304,6 +1356,38 @@ class SettingsWindow(ctk.CTkToplevel):
         if ask(self, T("sm_delete"), T("sm_delete_body").format(name=m, mb=MODEL_SIZES_MB[m]), T("delete_yes"), T("dl_no")):
             delete_stt(m)
             self._refresh_stt()
+
+    def _build_gpu_card(self):
+        card = self.card()
+        self.gpu_lbl = ctk.CTkLabel(card, text="", font=f(12), text_color=TEXT, anchor="w", justify="left", wraplength=520)
+        self.gpu_lbl.pack(fill="x", padx=16, pady=(12, 6))
+        self.gpu_btn = ctk.CTkButton(card, text="", width=120, height=30, corner_radius=15, font=f(12, True), command=self._gpu_action)
+        self.gpu_btn.pack(anchor="w", padx=14, pady=(0, 14))
+        self._refresh_gpu()
+
+    def _gpu_action(self):
+        if gpu.installed():
+            if ask(self, T("sm_delete"), T("gpu_rm_body"), T("delete_yes"), T("dl_no")):
+                self.app.remove_gpu_pack()
+        else:
+            self.app.ensure_gpu_pack()
+        self._refresh_gpu()
+
+    def _refresh_gpu(self):
+        if not gpu_present():
+            self._set(self.gpu_lbl, text=T("gpu_none"), text_color=SUB)
+            if self.gpu_btn.winfo_manager():
+                self.gpu_btn.pack_forget()
+            return
+        ok = gpu.installed()
+        pct = self.app._gpu_pct
+        if pct is not None:
+            self._set(self.gpu_lbl, text=f"⏳ {T('gpu_progress')} {pct}%", text_color=ORANGE)
+        elif ok:
+            self._set(self.gpu_lbl, text="✓ " + T("gpu_on") + ("" if cuda_usable() else " · " + T("gpu_restart")), text_color=GREEN)
+        else:
+            self._set(self.gpu_lbl, text=T("gpu_off").format(mb=GPU_PACK_MB, disk=GPU_PACK_DISK_MB), text_color=SUB)
+        self._set(self.gpu_btn, state="disabled" if pct is not None else "normal", **self._action_style(ok, pct is not None))
 
     def _build_mt_card(self):
         card = self.card()

@@ -14,7 +14,7 @@ Speech-to-text and translator for the VRChat chatbox. Speak into your microphone
 
 ## Features
 - Local speech recognition (faster-whisper): no usage limits, and your voice never leaves your PC.
-- Offline translation (M2M100): no limits, about 0.2 s per sentence, and sentences stay on your PC. You can also connect DeepL / Gemini with your own API key.
+- Offline translation (M2M100): no limits, about 0.2 s per sentence, and sentences stay on your PC. You can also connect DeepL / Papago / Google Cloud / Gemini with your own API key.
 - About 0.9 s from the end of your speech to the translated text (16-core PC, `small` model; varies by PC).
 - Protects VRChat terms and your names in translation; Korean particle fix.
 - Noise reduction, voice-band detection (ignores desk knocks), one-click microphone auto-tune.
@@ -37,7 +37,7 @@ Release notes: [CHANGELOG.md](CHANGELOG.md). Release checklist: [RELEASING.md](R
 
 ## Notices
 - This is a personal project, not affiliated with, endorsed by or sponsored by VRChat Inc., OpenAI or Google LLC. "VRChat" is a trademark of VRChat Inc.; "Google" is a trademark of Google LLC.
-- Translation runs on an offline model (M2M100, MIT License) by default. Online services (MyMemory / DeepL / Gemini) are used through their official APIs, only if you choose them and consent.
+- Translation runs on an offline model (M2M100, MIT License) by default. Online services (MyMemory / DeepL / Papago / Google Cloud / Gemini) are used through their official APIs, only if you choose them and consent.
 - No warranty is given for recognition or translation accuracy. You are responsible for what you send to the VRChat chatbox.
 - Be mindful of other people's voices that may be picked up by your microphone, and of the laws and consent rules that apply to you.
 - Open-source components and their licenses: [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).

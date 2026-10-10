@@ -14,7 +14,7 @@ VRChat 채팅박스용 음성 인식(STT) 번역기예요. 마이크로 말하�
 
 ## 특징
 - 로컬 음성 인식(faster-whisper): 사용 한도 없음, 목소리는 PC 밖으로 나가지 않음
-- 오프라인 번역(M2M100): 한도 없음, 문장당 약 0.2초, 문장도 PC 밖으로 나가지 않음. DeepL / Gemini는 내 API 키로 연결 가능
+- 오프라인 번역(M2M100): 한도 없음, 문장당 약 0.2초, 문장도 PC 밖으로 나가지 않음. DeepL / Papago / Google Cloud / Gemini는 내 API 키로 연결 가능
 - 말이 끝난 뒤 번역 결과까지 약 0.9초 (16코어 PC, `small` 모델 기준. PC마다 달라요)
 - 번역에서 VRChat 용어와 내 이름 보호, 한국어 조사 교정
 - 노이즈 제거, 목소리 대역 감지(책상 치는 소리 무시), 마이크 자동 맞춤
@@ -37,7 +37,7 @@ exe 빌드는 `build.bat`. 설정과 모델은 `%APPDATA%\RabbitHaru`에 저장�
 
 ## 고지
 - 이 프로젝트는 VRChat Inc., OpenAI, Google LLC와 제휴·후원·보증 관계가 없는 개인 프로젝트예요. "VRChat"은 VRChat Inc.의, "Google"은 Google LLC의 상표예요.
-- 번역은 기본적으로 내 PC에서 도는 오프라인 모델(M2M100, MIT 라이선스)을 써요. 온라인 서비스(MyMemory / DeepL / Gemini)는 사용자가 직접 고르고 동의한 경우에만 공식 API로 이용해요.
+- 번역은 기본적으로 내 PC에서 도는 오프라인 모델(M2M100, MIT 라이선스)을 써요. 온라인 서비스(MyMemory / DeepL / Papago / Google Cloud / Gemini)는 사용자가 직접 고르고 동의한 경우에만 공식 API로 이용해요.
 - 번역·인식 결과의 정확성은 보증하지 않으며, VRChat 채팅박스에 보낸 내용의 책임은 사용자에게 있어요.
 - 마이크에 다른 사람의 목소리가 들어올 수 있는 환경에서는 상대방의 동의와 관련 법규(통신비밀보호법 등)에 유의하세요.
 - 사용한 오픈소스와 라이선스: [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)

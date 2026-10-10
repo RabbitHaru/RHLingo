@@ -3,7 +3,7 @@
   "cpu_threads": 16,
   "python": "3.12.10"
  },
- "app_version": "1.0.0-beta.2",
+ "app_version": "1.0.0-beta.3",
  "footprint": {
   "installer_mb": 66.6,
   "install_folder_mb": 251,
@@ -235,85 +235,37 @@
   }
  },
  "models": {
-  "tiny": {
-   "disk_mb": 75,
-   "ram_mb": 109,
-   "load_s": 1.28,
-   "device": "cpu",
-   "recog_ms_median": 90,
-   "CER_by_condition": {
-    "clean": 7.8,
-    "quiet voice (x0.1)": 100.0,
-    "fan, SNR 10 dB": 28.1,
-    "mains hum, SNR 5 dB": 14.9,
-    "keyboard, SNR 3 dB": 33.7,
-    "background voices, SNR 8 dB": 33.0
-   },
-   "CER_mean_audible_pct": 23.5
-  },
-  "base": {
-   "disk_mb": 145,
-   "ram_mb": 41,
-   "load_s": 3.05,
-   "device": "cpu",
-   "recog_ms_median": 138,
-   "CER_by_condition": {
-    "clean": 8.0,
-    "quiet voice (x0.1)": 100.0,
-    "fan, SNR 10 dB": 19.1,
-    "mains hum, SNR 5 dB": 5.2,
-    "keyboard, SNR 3 dB": 30.5,
-    "background voices, SNR 8 dB": 21.3
-   },
-   "CER_mean_audible_pct": 16.8
-  },
   "small": {
    "disk_mb": 480,
-   "ram_mb": 177,
-   "load_s": 2.04,
-   "device": "cpu",
-   "recog_ms_median": 439,
+   "ram_mb": 685,
+   "load_s": 1.28,
+   "device": "cuda",
+   "recog_ms_median": 85,
    "CER_by_condition": {
-    "clean": 1.2,
+    "clean": 0.9,
     "quiet voice (x0.1)": 100.0,
-    "fan, SNR 10 dB": 14.6,
-    "mains hum, SNR 5 dB": 0.2,
-    "keyboard, SNR 3 dB": 26.8,
-    "background voices, SNR 8 dB": 7.1
+    "fan, SNR 10 dB": 12.2,
+    "mains hum, SNR 5 dB": 1.0,
+    "keyboard, SNR 3 dB": 27.1,
+    "background voices, SNR 8 dB": 5.2
    },
-   "CER_mean_audible_pct": 10.0
-  },
-  "medium": {
-   "disk_mb": 1500,
-   "ram_mb": 520,
-   "load_s": 11.37,
-   "device": "cpu",
-   "recog_ms_median": 1178,
-   "CER_by_condition": {
-    "clean": 0.2,
-    "quiet voice (x0.1)": 100.0,
-    "fan, SNR 10 dB": 3.6,
-    "mains hum, SNR 5 dB": 0.2,
-    "keyboard, SNR 3 dB": 25.2,
-    "background voices, SNR 8 dB": 6.4
-   },
-   "CER_mean_audible_pct": 7.1
+   "CER_mean_audible_pct": 9.3
   },
   "large-v3-turbo": {
    "disk_mb": 1600,
-   "ram_mb": 61,
-   "load_s": 7.54,
-   "device": "cpu",
-   "recog_ms_median": 1098,
+   "ram_mb": 7,
+   "load_s": 1.69,
+   "device": "cuda",
+   "recog_ms_median": 59,
    "CER_by_condition": {
-    "clean": 3.8,
+    "clean": 0.2,
     "quiet voice (x0.1)": 100.0,
-    "fan, SNR 10 dB": 8.1,
-    "mains hum, SNR 5 dB": 3.0,
-    "keyboard, SNR 3 dB": 27.1,
-    "background voices, SNR 8 dB": 5.6
+    "fan, SNR 10 dB": 8.5,
+    "mains hum, SNR 5 dB": 1.0,
+    "keyboard, SNR 3 dB": 27.6,
+    "background voices, SNR 8 dB": 2.9
    },
-   "CER_mean_audible_pct": 9.5
+   "CER_mean_audible_pct": 8.0
   }
  }
 }

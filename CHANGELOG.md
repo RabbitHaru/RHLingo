@@ -2,6 +2,16 @@
 
 🇰🇷 한국어: [CHANGELOG.ko.md](CHANGELOG.ko.md)
 
+## Unreleased
+
+### Added
+- **GPU acceleration pack (NVIDIA, optional)** in Settings → Models. After you agree (it shows the size first, about 1.2 GB), the app downloads NVIDIA's official cuBLAS and cuDNN libraries from PyPI, checks their SHA-256 and uses your GPU. On an RTX 5080, large-v3-turbo recognizes in about 0.06 s instead of about 1.1 s on the CPU, with a lower error rate (8.0% vs 9.5%). The pack can be deleted any time.
+- **Papago** (NAVER Cloud, official API) and **Google Cloud Translation** as "your own key" services. Both are pay-as-you-go: Papago's free developer API ended in February 2024, so the app says clearly that a billing account is needed and cannot promise a free quota. Offline and MyMemory still need no key.
+- Offline translation / recognition model rows show "CPU is slow" hints through the new model labels; the turbo row shows a GPU rocket when the GPU pack is active.
+
+### Changed
+- The benchmark tool measures all speech models, both offline translation models and the GPU ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)).
+
 ## v1.0.0-beta.3 — Short calls, better accuracy, new Models page
 
 ### Added
